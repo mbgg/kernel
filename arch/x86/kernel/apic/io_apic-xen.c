@@ -680,7 +680,7 @@ static void clear_IO_APIC (void)
 #define __add_pin_to_irq_node(cfg, node, apic, pin) 0
 #endif /* !CONFIG_XEN */
 
-#ifdef CONFIG_X86_32
+#if defined(CONFIG_X86_32) && !defined(CONFIG_XEN)
 /*
  * support for broken MP BIOSs, enables hand-redirection of PIRQ0-7 to
  * specific CPU-side IRQs.
@@ -1014,7 +1014,7 @@ static int pin_2_irq(int idx, int apic, int pin)
 			irq = gsi_top + gsi;
 	}
 
-#ifdef CONFIG_X86_32
+#if defined(CONFIG_X86_32) && !defined(CONFIG_XEN)
 	/*
 	 * PCI IRQ command line redirection. Yes, limits are hardcoded.
 	 */
@@ -2472,7 +2472,6 @@ static void ack_apic_edge(struct irq_data *data)
 atomic_t irq_mis_count;
 
 #ifdef CONFIG_GENERIC_PENDING_IRQ
-#ifndef CONFIG_XEN
 static bool io_apic_level_ack_pending(struct irq_cfg *cfg)
 {
 	struct irq_pin_list *entry;
@@ -2495,7 +2494,6 @@ static bool io_apic_level_ack_pending(struct irq_cfg *cfg)
 
 	return false;
 }
-#endif
 
 static inline bool ioapic_irqd_mask(struct irq_data *data, struct irq_cfg *cfg)
 {

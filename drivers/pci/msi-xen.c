@@ -553,11 +553,8 @@ static int msi_capability_init(struct pci_dev *dev, int nvec)
 {
 	struct msi_dev_list *dev_entry = get_msi_dev_pirq_list(dev);
 	int pirq;
-	u16 control;
 
 	msi_set_enable(dev, 0);	/* Disable MSI during set up */
-
-	pci_read_config_word(dev, dev->msi_cap + PCI_MSI_FLAGS, &control);
 
 	pirq = msi_map_vector(dev, nvec, 0, dev_entry->owner);
 	if (pirq < 0)
@@ -595,8 +592,6 @@ static int msix_capability_init(struct pci_dev *dev,
 
 	if (!msi_dev_entry)
 		return -ENOMEM;
-
-	msix_set_enable(dev, 0);/* Ensure msix is disabled as I set it up */
 
 	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
 
@@ -992,19 +987,21 @@ void pci_msi_init_pci_dev(struct pci_dev *dev)
 	/* Disable the msi hardware to avoid screaming interrupts
 	 * during boot.  This is the power on reset default so
 	 * usually this should be a noop.
-	 * But on a Xen host don't do this for IOMMUs which the hypervisor
-	 * is in control of (and hence has already enabled on purpose).
+	 * But on a Xen host don't do this for
+	 * - IOMMUs which the hypervisor is in control of (and hence has
+	 *   already enabled on purpose),
+	 * - unprivileged domains.
 	 */
 	if (is_initial_xendomain()
 	    && (dev->class >> 8) == PCI_CLASS_SYSTEM_IOMMU
 	    && dev->vendor == PCI_VENDOR_ID_AMD)
 		return;
 	dev->msi_cap = pci_find_capability(dev, PCI_CAP_ID_MSI);
-	if (dev->msi_cap)
+	if (dev->msi_cap && is_initial_xendomain())
 		msi_set_enable(dev, 0);
 
 	dev->msix_cap = pci_find_capability(dev, PCI_CAP_ID_MSIX);
-	if (dev->msix_cap)
+	if (dev->msix_cap && is_initial_xendomain())
 		msix_set_enable(dev, 0);
 }
 

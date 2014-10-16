@@ -55,7 +55,7 @@ struct irq_cfg {
 	union {
 		int bindcount; /* for dynamic IRQs */
 #ifdef CONFIG_X86_IO_APIC
-		u8 vector; /* for physical IRQs */
+		unsigned int vector; /* for physical IRQs */
 #endif
 	};
 };
