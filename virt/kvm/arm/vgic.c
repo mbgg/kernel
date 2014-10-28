@@ -1477,6 +1477,8 @@ int kvm_vgic_hyp_init(void)
 	struct resource vcpu_res;
 
 	vgic_node = of_find_compatible_node(NULL, NULL, "arm,cortex-a15-gic");
+	if (!vgic_node)
+		vgic_node = of_find_compatible_node(NULL, NULL, "arm,gic-400");
 	if (!vgic_node) {
 		kvm_err("error: no compatible vgic node in DT\n");
 		return -ENODEV;
@@ -1532,6 +1534,7 @@ int kvm_vgic_hyp_init(void)
 		goto out_unmap;
 	}
 
+#if 0
 	if (!PAGE_ALIGNED(vcpu_res.start)) {
 		kvm_err("GICV physical address 0x%llx not page aligned\n",
 			(unsigned long long)vcpu_res.start);
@@ -1546,6 +1549,7 @@ int kvm_vgic_hyp_init(void)
 		ret = -ENXIO;
 		goto out_unmap;
 	}
+#endif
 
 	vgic_vcpu_base = vcpu_res.start;
 
@@ -1588,6 +1592,13 @@ int kvm_vgic_init(struct kvm *kvm)
 	if (IS_VGIC_ADDR_UNDEF(kvm->arch.vgic.vgic_dist_base) ||
 	    IS_VGIC_ADDR_UNDEF(kvm->arch.vgic.vgic_cpu_base)) {
 		kvm_err("Need to set vgic cpu and dist addresses first\n");
+		ret = -ENXIO;
+		goto out;
+	}
+
+	if ((kvm->arch.vgic.vgic_cpu_base & ~PAGE_MASK) !=
+	    (vgic_vcpu_base & ~PAGE_MASK)) {
+		kvm_err("Need to align vgic identically in guest and host\n");
 		ret = -ENXIO;
 		goto out;
 	}
@@ -1725,6 +1736,13 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 					       *addr, KVM_VGIC_V2_CPU_SIZE);
 		} else {
 			*addr = vgic->vgic_cpu_base;
+		}
+		break;
+	case KVM_VGIC_V2_PAGE_OFFSET:
+		if (write) {
+			r = -ENODEV;
+		} else {
+			*addr = vgic_vcpu_base & ~PAGE_MASK;
 		}
 		break;
 	default:

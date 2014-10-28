@@ -63,17 +63,21 @@ __do_hyp_init:
 	mrs	x4, tcr_el1
 	ldr	x5, =TCR_EL2_MASK
 	and	x4, x4, x5
-	ldr	x5, =TCR_EL2_FLAGS
-	orr	x4, x4, x5
-	msr	tcr_el2, x4
-
-	ldr	x4, =VTCR_EL2_FLAGS
 	/*
 	 * Read the PARange bits from ID_AA64MMFR0_EL1 and set the PS bits in
-	 * VTCR_EL2.
+	 * TCR_EL2 and both PS bits and T0SZ bits in VTCR_EL2.
 	 */
 	mrs	x5, ID_AA64MMFR0_EL1
 	bfi	x4, x5, #16, #3
+	msr	tcr_el2, x4
+
+	ldr	x4, =VTCR_EL2_FLAGS
+	bfi	x4, x5, #16, #3
+	and	x5, x5, #0xf
+	adr	x6, t0sz
+	add	x6, x6, x5, lsl #2
+	ldr	w5, [x6]
+	orr	x4, x4, x5
 	msr	vtcr_el2, x4
 
 	mrs	x4, mair_el1
@@ -113,6 +117,10 @@ target: /* We're now in the trampoline code, switch page tables */
 
 	/* Hello, World! */
 	eret
+
+t0sz:
+	.word	VTCR_EL2_T0SZ(32), VTCR_EL2_T0SZ(36), VTCR_EL2_T0SZ(40)
+	.word	VTCR_EL2_T0SZ(42), VTCR_EL2_T0SZ(44), VTCR_EL2_T0SZ(48)
 ENDPROC(__kvm_hyp_init)
 
 	.ltorg

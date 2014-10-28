@@ -21,6 +21,7 @@
 
 #include <asm/memory.h>
 #include <asm/page.h>
+#include <asm/kvm_arm.h>
 
 /*
  * We directly use the kernel VA for the HYP, as we can directly share
@@ -127,6 +128,18 @@ static inline void kvm_set_s2pmd_writable(pmd_t *pmd)
 	(__boundary - 1 < (end) - 1)? __boundary: (end);		\
 })
 
+static inline bool kvm_page_empty(void *ptr)
+{
+	struct page *ptr_page = virt_to_page(ptr);
+	return page_count(ptr_page) == 1;
+}
+
+
+#define kvm_pte_table_empty(ptep) kvm_page_empty(ptep)
+#define kvm_pmd_table_empty(pmdp) kvm_page_empty(pmdp)
+#define kvm_pud_table_empty(pudp) (0)
+
+
 struct kvm;
 
 #define kvm_flush_dcache_to_poc(a,l)	__cpuc_flush_dcache_area((a), (l))
@@ -165,6 +178,18 @@ static inline void coherent_cache_guest_page(struct kvm_vcpu *vcpu, hva_t hva,
 #define kvm_virt_to_phys(x)		virt_to_idmap((unsigned long)(x))
 
 void stage2_flush_vm(struct kvm *kvm);
+
+static inline int kvm_get_phys_addr_shift(void)
+{
+	return KVM_PHYS_SHIFT;
+}
+
+
+static inline u32 get_vttbr_baddr_mask(void)
+{
+	return VTTBR_BADDR_MASK;
+}
+
 
 #endif	/* !__ASSEMBLY__ */
 

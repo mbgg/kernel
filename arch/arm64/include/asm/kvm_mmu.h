@@ -125,6 +125,21 @@ static inline void kvm_set_s2pmd_writable(pmd_t *pmd)
 #define kvm_pud_addr_end(addr, end)	pud_addr_end(addr, end)
 #define kvm_pmd_addr_end(addr, end)	pmd_addr_end(addr, end)
 
+static inline bool kvm_page_empty(void *ptr)
+{
+	struct page *ptr_page = virt_to_page(ptr);
+	return page_count(ptr_page) == 1;
+}
+
+#define kvm_pte_table_empty(ptep) kvm_page_empty(ptep)
+#ifndef CONFIG_ARM64_64K_PAGES
+#define kvm_pmd_table_empty(pmdp) kvm_page_empty(pmdp)
+#else
+#define kvm_pmd_table_empty(pmdp) (0)
+#endif
+#define kvm_pud_table_empty(pudp) (0)
+
+
 struct kvm;
 
 #define kvm_flush_dcache_to_poc(a,l)	__flush_dcache_area((a), (l))
@@ -151,6 +166,81 @@ static inline void coherent_cache_guest_page(struct kvm_vcpu *vcpu, hva_t hva,
 #define kvm_virt_to_phys(x)		__virt_to_phys((unsigned long)(x))
 
 void stage2_flush_vm(struct kvm *kvm);
+
+/*
+ * ARMv8 64K architecture limitations:
+ * 16 <= T0SZ <= 21 is valid under 3 level of translation tables
+ * 18 <= T0SZ <= 34 is valid under 2 level of translation tables
+ * 31 <= T0SZ <= 39 is valid under 1 level of transltaion tables
+ *
+ * ARMv8 4K architecture limitations:
+ * 16 <= T0SZ <= 24 is valid under 4 level of translation tables
+ * 21 <= T0SZ <= 33 is valid under 3 level of translation tables
+ * 30 <= T0SZ <= 39 is valid under 2 level of translation tables
+ *
+ * For 4K pages we only support 3 or 4 level, giving T0SZ a range of 16 to 33.
+ * For 64K pages we only support 2 or 3 level, giving T0SZ a range of 16 to 34.
+ *
+ * See Table D4-23 and Table D4-25 in ARM DDI 0487A.b to figure out
+ * the origin of the hardcoded values, 38 and 37.
+ */
+
+#ifdef CONFIG_ARM64_64K_PAGES
+static inline int t0sz_to_vttbr_x(int t0sz)
+{
+	if (t0sz < 16 || t0sz > 34) {
+		kvm_err("Cannot support %d-bit address space\n", 64 - t0sz);
+		return -EINVAL;
+	}
+
+	return 38 - t0sz;
+}
+#else /* 4K pages */
+static inline int t0sz_to_vttbr_x(int t0sz)
+{
+	if (t0sz < 16 || t0sz > 33) {
+		kvm_err("Cannot support %d-bit address space\n", 64 - t0sz);
+		return -EINVAL;
+	}
+	return 37 - t0sz;
+}
+#endif
+static inline int kvm_get_phys_addr_shift(void)
+{
+	int pa_range = read_cpuid(ID_AA64MMFR0_EL1) & 0xf;
+
+	switch (pa_range) {
+	case 0: return 32;
+	case 1: return 36;
+	case 2: return 40;
+	case 3: return 42;
+	case 4: return 44;
+	case 5: return 48;
+	default:
+		BUG();
+		return 0;
+	}
+}
+
+/**
+ * get_vttbr_baddr_mask - get mask value for vttbr base address
+ *
+ * In ARMv8, vttbr_baddr_mask cannot be determined in compile time since the
+ * stage2 input address size depends on hardware capability. Thus, we first
+ * need to read ID_AA64MMFR0_EL1.PARange and then set vttbr_baddr_mask with
+ * consideration of both the granule size and the level of translation tables.
+ */
+static inline u64 get_vttbr_baddr_mask(void)
+{
+	int t0sz, vttbr_x;
+
+	t0sz = VTCR_EL2_T0SZ(kvm_get_phys_addr_shift());
+	vttbr_x = t0sz_to_vttbr_x(t0sz);
+	if (vttbr_x < 0)
+		return ~0;
+	return GENMASK_ULL(48, (vttbr_x - 1));
+
+}
 
 #endif /* __ASSEMBLY__ */
 #endif /* __ARM64_KVM_MMU_H__ */

@@ -37,6 +37,7 @@
 #include <asm/mman.h>
 #include <asm/tlbflush.h>
 #include <asm/cacheflush.h>
+#include <asm/cputype.h>
 #include <asm/virt.h>
 #include <asm/kvm_arm.h>
 #include <asm/kvm_asm.h>
@@ -60,6 +61,12 @@ static DEFINE_PER_CPU(struct kvm_vcpu *, kvm_arm_running_vcpu);
 static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u8 kvm_next_vmid;
 static DEFINE_SPINLOCK(kvm_vmid_lock);
+
+#ifdef CONFIG_ARM64
+static u64 vttbr_baddr_mask;
+#else
+static u32 vttbr_baddr_mask;
+#endif
 
 static bool vgic_present;
 
@@ -466,8 +473,14 @@ static void update_vttbr(struct kvm *kvm)
 	/* update vttbr to be used with the new vmid */
 	pgd_phys = virt_to_phys(kvm->arch.pgd);
 	vmid = ((u64)(kvm->arch.vmid) << VTTBR_VMID_SHIFT) & VTTBR_VMID_MASK;
-	kvm->arch.vttbr = pgd_phys & VTTBR_BADDR_MASK;
-	kvm->arch.vttbr |= vmid;
+
+	/*
+	 * If the VTTBR isn't aligned there is something wrong with the system
+	 * or kernel.
+	 */
+	BUG_ON(pgd_phys & ~vttbr_baddr_mask);
+
+	kvm->arch.vttbr = pgd_phys | vmid;
 
 	spin_unlock(&kvm_vmid_lock);
 }
@@ -1050,6 +1063,12 @@ int kvm_arch_init(void *opaque)
 			kvm_err("Error, CPU %d not supported!\n", cpu);
 			return -ENODEV;
 		}
+	}
+
+	vttbr_baddr_mask = get_vttbr_baddr_mask();
+	if (vttbr_baddr_mask == ~0) {
+		kvm_err("Cannot set vttbr_baddr_mask\n");
+		return -EINVAL;
 	}
 
 	cpu_notifier_register_begin();

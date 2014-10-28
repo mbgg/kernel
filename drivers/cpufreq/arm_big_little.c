@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 #include <linux/topology.h>
 #include <linux/types.h>
+#include <linux/module.h>
 #include <asm/bL_switcher.h>
 
 #include "arm_big_little.h"
