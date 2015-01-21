@@ -237,9 +237,8 @@ static inline int dentry_cmp(const struct dentry *dentry, const unsigned char *c
 
 static void __d_free(struct rcu_head *head)
 {
-	struct dentry *dentry = container_of(head, struct dentry, d_u.d_rcu);
+	struct dentry *dentry = container_of(head, struct dentry, d_rcu);
 
-	WARN_ON(!hlist_unhashed(&dentry->d_alias));
 	if (dname_external(dentry))
 		kfree(dentry->d_name.name);
 	kmem_cache_free(dentry_cache, dentry); 
@@ -247,11 +246,12 @@ static void __d_free(struct rcu_head *head)
 
 static void dentry_free(struct dentry *dentry)
 {
+	WARN_ON(!hlist_unhashed(&dentry->d_alias));
 	/* if dentry was never visible to RCU, immediate free is OK */
 	if (!(dentry->d_flags & DCACHE_RCUACCESS))
-		__d_free(&dentry->d_u.d_rcu);
+		__d_free(&dentry->d_rcu);
 	else
-		call_rcu(&dentry->d_u.d_rcu, __d_free);
+		call_rcu(&dentry->d_rcu, __d_free);
 }
 
 /**
