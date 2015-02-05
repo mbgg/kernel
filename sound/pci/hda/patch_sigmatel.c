@@ -104,6 +104,7 @@ enum {
 	STAC_92HD83XXX_HP,
 	STAC_HP_ENVY_BASS,
 	STAC_HP_BNB13_EQ,
+	STAC_92HD83XXX_GPIO10_EAPD,
 	STAC_92HD83XXX_MODELS
 };
 
@@ -2172,6 +2173,19 @@ static void stac92hd83xxx_fixup_headset_jack(struct hda_codec *codec,
 		spec->headset_jack = 1;
 }
 
+static void stac92hd83xxx_fixup_gpio10_eapd(struct hda_codec *codec,
+					    const struct hda_fixup *fix,
+					    int action)
+{
+	struct sigmatel_spec *spec = codec->spec;
+
+	if (action != HDA_FIXUP_ACT_PRE_PROBE)
+		return;
+	spec->eapd_mask = spec->gpio_mask = spec->gpio_dir =
+		spec->gpio_data = 0x10;
+	spec->eapd_switch = 0;
+}
+
 static const struct hda_verb hp_bnb13_eq_verbs[] = {
 	/* 44.1KHz base */
 	{ 0x22, 0x7A6, 0x3E },
@@ -2680,6 +2694,10 @@ static const struct hda_fixup stac92hd83xxx_fixups[] = {
 		.chained = true,
 		.chain_id = STAC_92HD83XXX_HP_MIC_LED,
 	},
+	[STAC_92HD83XXX_GPIO10_EAPD] = {
+		.type = HDA_FIXUP_FUNC,
+		.v.func = stac92hd83xxx_fixup_gpio10_eapd,
+	},
 };
 
 static const struct hda_model_fixup stac92hd83xxx_models[] = {
@@ -2882,6 +2900,8 @@ static const struct snd_pci_quirk stac92hd83xxx_fixup_tbl[] = {
 	SND_PCI_QUIRK(PCI_VENDOR_ID_HP, 0x148a,
 		      "HP Mini", STAC_92HD83XXX_HP_LED),
 	SND_PCI_QUIRK_VENDOR(PCI_VENDOR_ID_HP, "HP", STAC_92HD83XXX_HP),
+	SND_PCI_QUIRK(PCI_VENDOR_ID_TOSHIBA, 0xfa91,
+		      "Toshiba Satellite S50D", STAC_92HD83XXX_GPIO10_EAPD),
 	{} /* terminator */
 };
 
