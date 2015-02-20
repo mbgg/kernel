@@ -2355,6 +2355,7 @@ static void nfs4_state_manager(struct nfs_client *clp)
 				continue;
 			if (status < 0)
 				goto out_error;
+			continue;
 		}
 
 		/* Send BIND_CONN_TO_SESSION */
