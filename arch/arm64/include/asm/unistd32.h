@@ -213,7 +213,7 @@ __SYSCALL(188, sys_ni_syscall)			/* 188 reserved */
 __SYSCALL(189, sys_ni_syscall)			/* 189 reserved */
 __SYSCALL(190, sys_vfork)
 __SYSCALL(191, compat_sys_getrlimit)		/* SuS compliant getrlimit */
-__SYSCALL(192, sys_mmap_pgoff)
+__SYSCALL(192, compat_sys_mmap2_wrapper)
 __SYSCALL(193, compat_sys_truncate64_wrapper)
 __SYSCALL(194, compat_sys_ftruncate64_wrapper)
 __SYSCALL(195, sys_stat64)
