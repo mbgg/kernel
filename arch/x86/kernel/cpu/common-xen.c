@@ -1020,7 +1020,7 @@ static void vgetcpu_set_mode(void)
 }
 
 /* May not be __init: called during resume */
-void syscall32_cpu_init(void)
+static void syscall32_cpu_init(void)
 {
 	static const struct callback_register cstar = {
 		.type = CALLBACKTYPE_syscall32,
