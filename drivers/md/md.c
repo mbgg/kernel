@@ -4423,13 +4423,8 @@ min_sync_store(struct mddev *mddev, const char *buf, size_t len)
 	if (test_bit(MD_RECOVERY_RUNNING, &mddev->recovery))
 		return -EBUSY;
 
-	/* Must be a multiple of chunk_size */
-	if (mddev->chunk_sectors) {
-		sector_t temp = min;
-		if (sector_div(temp, mddev->chunk_sectors))
-			return -EINVAL;
-	}
-	mddev->resync_min = min;
+	/* Round down to multiple of 4K for safety */
+	mddev->resync_min = round_down(min, 8);
 
 	return len;
 }
