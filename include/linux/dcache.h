@@ -126,8 +126,14 @@ struct dentry {
 	struct list_head d_lru;		/* LRU list */
 	union {
 		struct list_head d_child;	/* child of parent list */
+#ifdef __GENKSYMS__
+	 	struct rcu_head d_rcu;
+#endif
 	} d_u;
 	struct list_head d_subdirs;	/* our children */
+#ifdef __GENKSYMS__
+	struct hlist_node d_alias;
+#else
 	/*
 	 * d_alias and d_rcu can share memory
 	 */
@@ -135,6 +141,7 @@ struct dentry {
 		struct hlist_node d_alias;	/* inode alias list */
 	 	struct rcu_head d_rcu;
 	};
+#endif
 };
 
 /*
