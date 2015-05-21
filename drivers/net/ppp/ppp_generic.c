@@ -751,23 +751,25 @@ static long ppp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		err = get_filter(argp, &code);
 		if (err >= 0) {
+			struct sk_filter *pass_filter = NULL;
 			struct sock_fprog_kern fprog = {
 				.len = err,
 				.filter = code,
 			};
 
-			ppp_lock(ppp);
-			if (ppp->pass_filter) {
-				sk_unattached_filter_destroy(ppp->pass_filter);
-				ppp->pass_filter = NULL;
-			}
+			err = 0;
 			if (fprog.filter != NULL)
-				err = sk_unattached_filter_create(&ppp->pass_filter,
+				err = sk_unattached_filter_create(&pass_filter,
 								  &fprog);
-			else
-				err = 0;
+			if (!err) {
+				ppp_lock(ppp);
+				if (ppp->pass_filter)
+					sk_unattached_filter_destroy(ppp->pass_filter);
+				ppp->pass_filter = pass_filter;
+				ppp_unlock(ppp);
+
+			}
 			kfree(code);
-			ppp_unlock(ppp);
 		}
 		break;
 	}
@@ -777,23 +779,24 @@ static long ppp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		err = get_filter(argp, &code);
 		if (err >= 0) {
+			struct sk_filter *active_filter = NULL;
 			struct sock_fprog_kern fprog = {
 				.len = err,
 				.filter = code,
 			};
 
-			ppp_lock(ppp);
-			if (ppp->active_filter) {
-				sk_unattached_filter_destroy(ppp->active_filter);
-				ppp->active_filter = NULL;
-			}
+			err = 0;
 			if (fprog.filter != NULL)
-				err = sk_unattached_filter_create(&ppp->active_filter,
+				err = sk_unattached_filter_create(&active_filter,
 								  &fprog);
-			else
-				err = 0;
+			if (!err) {
+				ppp_lock(ppp);
+				if (ppp->active_filter)
+					sk_unattached_filter_destroy(ppp->active_filter);
+				ppp->active_filter = active_filter;
+				ppp_unlock(ppp);
+			}
 			kfree(code);
-			ppp_unlock(ppp);
 		}
 		break;
 	}
