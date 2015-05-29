@@ -108,6 +108,7 @@ obj-$(CONFIG_TRACING)			+= tracepoint.o
 obj-$(CONFIG_IOSF_MBI)			+= iosf_mbi.o
 
 obj-$(CONFIG_X86_XEN)		+= fixup.o
+obj-$(CONFIG_XEN)		+= pci-dma-xen-kabi.o
 
 ###
 # 64 bit specific files
