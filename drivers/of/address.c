@@ -6,7 +6,9 @@
 #include <linux/of_address.h>
 #include <linux/pci_regs.h>
 #include <linux/sizes.h>
+#ifndef __GENKSYMS__
 #include <linux/slab.h>
+#endif
 #include <linux/string.h>
 
 /* Max address size we deal with */
