@@ -1102,6 +1102,12 @@ void snd_usb_set_format_quirk(struct snd_usb_substream *subs,
 	}
 }
 
+bool snd_usb_get_sample_rate_quirk(struct snd_usb_audio *chip)
+{
+	/* MS Lifecam HD-5000 doesn't support reading the sample rate. */
+	return chip->usb_id == USB_ID(0x045E, 0x076D);
+}
+
 void snd_usb_endpoint_start_quirk(struct snd_usb_endpoint *ep)
 {
 	/*
