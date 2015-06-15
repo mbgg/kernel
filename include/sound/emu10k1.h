@@ -1707,7 +1707,6 @@ struct snd_emu10k1 {
 	unsigned short model;			/* subsystem id */
 	unsigned int card_type;			/* EMU10K1_CARD_* */
 	unsigned int ecard_ctrl;		/* ecard control bits */
-	unsigned int address_mode;		/* address mode */
 	unsigned long dma_mask;			/* PCI DMA mask */
 	unsigned int delay_pcm_irq;		/* in samples */
 	int max_cache_pages;			/* max memory size / PAGE_SIZE */
@@ -1802,6 +1801,9 @@ struct snd_emu10k1 {
 	bool suspend;
 #endif
 
+#ifndef __GENKSYMS__
+	unsigned int address_mode;		/* address mode */
+#endif
 };
 
 int snd_emu10k1_create(struct snd_card *card,
