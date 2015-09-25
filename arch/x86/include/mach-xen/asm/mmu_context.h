@@ -30,7 +30,7 @@ extern struct static_key rdpmc_always_available;
 
 static inline void load_mm_cr4(struct mm_struct *mm)
 {
-	if (static_key_true(&rdpmc_always_available) ||
+	if (static_key_false(&rdpmc_always_available) ||
 	    atomic_read(&mm->context.perf_rdpmc_allowed))
 		cr4_set_bits(X86_CR4_PCE);
 	else
@@ -190,11 +190,10 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		 * prev->context.ldt, because mms never share an LDT.
 		 */
 		if (unlikely(prev->context.ldt != next->context.ldt)) {
-			/* load_mm_ldt(&next->context) */
+			/* load_mm_ldt(next) */
 			const struct ldt_struct *ldt;
 
-			/* lockless_dereference synchronizes with smp_store_rele
-ase */
+			/* lockless_dereference synchronizes with smp_store_release */
 			ldt = lockless_dereference(next->context.ldt);
 			op->cmd = MMUEXT_SET_LDT;
 			if (unlikely(ldt)) {

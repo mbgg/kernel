@@ -328,7 +328,9 @@ void pci_restore_msi_state(struct pci_dev *dev)
 	if (dev->msi_enabled)
 		msi_set_enable(dev, 0);
 	if (dev->msix_enabled)
-		msix_clear_and_set_ctrl(dev, PCI_MSIX_FLAGS_ENABLE, 0);
+		msix_clear_and_set_ctrl(dev, 0,
+					PCI_MSIX_FLAGS_ENABLE |
+					PCI_MSIX_FLAGS_MASKALL);
 
 	if (pci_seg_supported) {
 		struct physdev_pci_device restore = {
@@ -352,6 +354,9 @@ void pci_restore_msi_state(struct pci_dev *dev)
 	}
 #endif
 	WARN(rc && rc != -ENOSYS, "restore_msi -> %d\n", rc);
+
+	if (dev->msix_enabled)
+		msix_clear_and_set_ctrl(dev, PCI_MSIX_FLAGS_MASKALL, 0);
 }
 EXPORT_SYMBOL_GPL(pci_restore_msi_state);
 
@@ -714,6 +719,9 @@ int pci_msi_vec_count(struct pci_dev *dev)
 	if (!dev->msi_cap)
 		return -EINVAL;
 
+	if (!msi_multi_vec_supported)
+		return 1;
+
 	pci_read_config_word(dev, dev->msi_cap + PCI_MSI_FLAGS, &msgctl);
 	ret = 1 << ((msgctl & PCI_MSI_FLAGS_QMASK) >> 1);
 
@@ -1007,10 +1015,7 @@ int pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec)
 	if (minvec <= 0 || maxvec < minvec)
 		return -ERANGE;
 
-	if (msi_multi_vec_supported)
-		nvec = pci_msi_vec_count(dev);
-	else
-		nvec = 1;
+	nvec = pci_msi_vec_count(dev);
 	if (nvec < 0)
 		return nvec;
 	else if (nvec < minvec)

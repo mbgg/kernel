@@ -95,8 +95,6 @@ unsigned long io_apic_irqs;
 int sis_apic_bug = -1;
 
 static DEFINE_RAW_SPINLOCK(ioapic_lock);
-#ifndef CONFIG_XEN
-#endif
 static DEFINE_MUTEX(ioapic_mutex);
 static unsigned int ioapic_dynirq_base;
 static int ioapic_initialized;

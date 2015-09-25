@@ -129,7 +129,7 @@ ENTRY(ia32_sysenter_target)
 	movq	%r10,8(%rsp)
 
 	/* Construct struct pt_regs on stack */
-	movq	%rax,(%rsp)
+	movq	%rax,(%rsp)			/* pt_regs->orig_ax */
 	pushq_cfi_reg	rdi			/* pt_regs->di */
 	pushq_cfi_reg	rsi			/* pt_regs->si */
 	pushq_cfi_reg	rdx			/* pt_regs->dx */

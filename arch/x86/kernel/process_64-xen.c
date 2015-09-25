@@ -466,9 +466,7 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	task_thread_info(prev_p)->saved_preempt_count = this_cpu_read(__preempt_count);
 	this_cpu_write(__preempt_count, task_thread_info(next_p)->saved_preempt_count);
 
-	/* Reload esp0 and ss1.  This changes current_thread_info(). */
-	load_sp0(tss, next);
-
+	/* This changes current_thread_info(). */
 	this_cpu_write(kernel_stack,
 		(unsigned long)task_stack_page(next_p) + THREAD_SIZE);
 

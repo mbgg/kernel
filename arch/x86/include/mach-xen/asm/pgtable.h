@@ -976,10 +976,10 @@ static inline pte_t pte_swp_clear_soft_dirty(pte_t pte)
 #include <asm-generic/pgtable.h>
 
 #include <xen/features.h>
-void make_page_readonly(void *va, unsigned int feature);
-void make_page_writable(void *va, unsigned int feature);
-void make_pages_readonly(void *va, unsigned int nr, unsigned int feature);
-void make_pages_writable(void *va, unsigned int nr, unsigned int feature);
+void make_page_readonly(const void *, unsigned int feature);
+void make_page_writable(const void *, unsigned int feature);
+void make_pages_readonly(const void *, unsigned int nr, unsigned int feature);
+void make_pages_writable(const void *, unsigned int nr, unsigned int feature);
 
 struct vm_area_struct;
 
