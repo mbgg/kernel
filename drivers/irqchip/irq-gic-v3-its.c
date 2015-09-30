@@ -36,9 +36,12 @@
 #include <asm/cputype.h>
 #include <asm/exception.h>
 
+#include "irq-gic-common.h"
 #include "irqchip.h"
 
-#define ITS_FLAGS_CMDQ_NEEDS_FLUSHING		(1 << 0)
+#define ITS_FLAGS_CMDQ_NEEDS_FLUSHING		(1ULL << 0)
+#define ITS_WORKAROUND_CAVIUM_22375            (1ULL << 1)
+#define ITS_WORKAROUND_CAVIUM_23144            (1ULL << 2)
 
 #define RDIST_FLAGS_PROPBASE_NEEDS_FLUSHING	(1 << 0)
 
@@ -54,12 +57,13 @@ struct its_collection {
 
 /*
  * The ITS structure - contains most of the infrastructure, with the
- * top-level MSI domain, the command queue, the collections, and the
- * list of devices writing to it.
+ * msi_controller, the command queue, the collections, and the list of
+ * devices writing to it.
  */
 struct its_node {
 	raw_spinlock_t		lock;
 	struct list_head	entry;
+	struct msi_controller	msi_chip;
 	struct irq_domain	*domain;
 	void __iomem		*base;
 	unsigned long		phys_base;
@@ -70,6 +74,7 @@ struct its_node {
 	struct list_head	its_device_list;
 	u64			flags;
 	u32			ite_size;
+	int			numa_node;
 };
 
 #define ITS_ITT_ALIGN		SZ_256
@@ -604,11 +609,20 @@ static void its_eoi_irq(struct irq_data *d)
 static int its_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 			    bool force)
 {
-	unsigned int cpu = cpumask_any_and(mask_val, cpu_online_mask);
+	unsigned int cpu;
+	const struct cpumask *cpu_mask = cpu_online_mask;
 	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 	struct its_collection *target_col;
 	u32 id = its_get_event_id(d);
 
+	/* lpi cannot be routed to a redistributor that is on a foreign node */
+	if (its_dev->its->flags & ITS_WORKAROUND_CAVIUM_23144) {
+		cpu_mask = cpumask_of_node(its_dev->its->numa_node);
+		if (!cpumask_intersects(mask_val, cpu_mask))
+			return -EINVAL;
+	}
+
+	cpu = cpumask_any_and(mask_val, cpu_mask);
 	if (cpu >= nr_cpu_ids)
 		return -EINVAL;
 
@@ -836,7 +850,22 @@ static int its_alloc_tables(struct its_node *its)
 	int i;
 	int psz = SZ_64K;
 	u64 shr = GITS_BASER_InnerShareable;
-	u64 cache = GITS_BASER_WaWb;
+	u64 cache;
+	u64 typer;
+	u32 ids;
+
+	if (its->flags & ITS_WORKAROUND_CAVIUM_22375) {
+		/*
+		 * erratum 22375: only alloc 8MB table size
+		 * erratum 24313: ignore memory access type
+		 */
+		cache	= 0;
+		ids	= 0x13;			/* 20 bits, 8MB */
+	} else {
+		cache	= GITS_BASER_WaWb;
+		typer	= readq_relaxed(its->base + GITS_TYPER);
+		ids	= GITS_TYPER_DEVBITS(typer);
+	}
 
 	for (i = 0; i < GITS_BASER_NR_REGS; i++) {
 		u64 val = readq_relaxed(its->base + GITS_BASER + i * 8);
@@ -844,6 +873,7 @@ static int its_alloc_tables(struct its_node *its)
 		u64 entry_size = GITS_BASER_ENTRY_SIZE(val);
 		int order = get_order(psz);
 		int alloc_size;
+		int alloc_pages;
 		u64 tmp;
 		void *base;
 
@@ -859,9 +889,6 @@ static int its_alloc_tables(struct its_node *its)
 		 * For other tables, only allocate a single page.
 		 */
 		if (type == GITS_BASER_TYPE_DEVICE) {
-			u64 typer = readq_relaxed(its->base + GITS_TYPER);
-			u32 ids = GITS_TYPER_DEVBITS(typer);
-
 			/*
 			 * 'order' was initialized earlier to the default page
 			 * granule of the the ITS.  We can't have an allocation
@@ -873,11 +900,19 @@ static int its_alloc_tables(struct its_node *its)
 			if (order >= MAX_ORDER) {
 				order = MAX_ORDER - 1;
 				pr_warn("%s: Device Table too large, reduce its page order to %u\n",
-					its->domain->of_node->full_name, order);
+					its->msi_chip.of_node->full_name, order);
 			}
 		}
 
 		alloc_size = (1 << order) * PAGE_SIZE;
+		alloc_pages = (alloc_size / psz);
+		if (alloc_pages > GITS_BASER_PAGES_MAX) {
+			alloc_pages = GITS_BASER_PAGES_MAX;
+			order = get_order(GITS_BASER_PAGES_MAX * psz);
+			pr_warn("%s: Device Table too large, reduce its page order to %u (%u pages)\n",
+				its->msi_chip.of_node->full_name, order, alloc_pages);
+		}
+
 		base = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, order);
 		if (!base) {
 			err = -ENOMEM;
@@ -906,7 +941,7 @@ retry_baser:
 			break;
 		}
 
-		val |= (alloc_size / psz) - 1;
+		val |= alloc_pages - 1;
 
 		writeq_relaxed(val, its->base + GITS_BASER + i * 8);
 		tmp = readq_relaxed(its->base + GITS_BASER + i * 8);
@@ -943,7 +978,7 @@ retry_baser:
 
 		if (val != tmp) {
 			pr_err("ITS: %s: GITS_BASER%d doesn't stick: %lx %lx\n",
-			       its->domain->of_node->full_name, i,
+			       its->msi_chip.of_node->full_name, i,
 			       (unsigned long) val, (unsigned long) tmp);
 			err = -ENXIO;
 			goto out_free;
@@ -1224,11 +1259,23 @@ static int its_pci_msi_vec_count(struct pci_dev *pdev)
 	return max(msi, msix);
 }
 
+static u32 its_dflt_pci_requester_id(struct pci_dev *pdev, u16 alias)
+{
+	return alias;
+}
+
+static its_pci_requester_id_t its_pci_requester_id = its_dflt_pci_requester_id;
+void set_its_pci_requester_id(its_pci_requester_id_t fn)
+{
+	its_pci_requester_id = fn;
+}
+EXPORT_SYMBOL(set_its_pci_requester_id);
+
 static int its_get_pci_alias(struct pci_dev *pdev, u16 alias, void *data)
 {
 	struct its_pci_alias *dev_alias = data;
 
-	dev_alias->dev_id = alias;
+	dev_alias->dev_id = its_pci_requester_id(pdev, alias);
 	if (pdev != dev_alias->pdev)
 		dev_alias->count += its_pci_msi_vec_count(dev_alias->pdev);
 
@@ -1335,9 +1382,14 @@ static void its_irq_domain_activate(struct irq_domain *domain,
 {
 	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 	u32 event = its_get_event_id(d);
+	const struct cpumask *cpu_mask = cpu_online_mask;
+
+	/* get the cpu_mask of local node */
+	if (IS_ENABLED(CONFIG_NUMA))
+		cpu_mask = cpumask_of_node(its_dev->its->numa_node);
 
 	/* Bind the LPI to the first possible CPU */
-	its_dev->event_map.col_map[event] = cpumask_first(cpu_online_mask);
+	its_dev->event_map.col_map[event] = cpumask_first(cpu_mask);
 
 	/* Map the GIC IRQ and event to the device */
 	its_send_mapvi(its_dev, d->hwirq, event);
@@ -1420,21 +1472,63 @@ static int its_force_quiescent(void __iomem *base)
 	}
 }
 
+static void its_enable_cavium_thunderx_22375(void *data)
+{
+	struct its_node *its = data;
+
+	its->flags |= ITS_WORKAROUND_CAVIUM_22375;
+}
+
+static void its_enable_cavium_thunderx_23144(void *data)
+{
+	struct its_node *its = data;
+
+	if (num_possible_nodes() > 1)
+		its->flags |= ITS_WORKAROUND_CAVIUM_23144;
+}
+
+static const struct gic_capabilities its_errata[] = {
+	{
+		.desc	= "ITS: Cavium errata 22375, 24313",
+		.iidr	= 0xa100034c,	/* ThunderX pass 1.x */
+		.mask	= 0xffff0fff,
+		.init	= its_enable_cavium_thunderx_22375,
+	},
+	{
+		.desc	= "ITS: Cavium errata 23144",
+		.iidr	= 0xa100034c,	/* ThunderX pass 1.x */
+		.mask	= 0xffff0fff,
+		.init	= its_enable_cavium_thunderx_23144,
+	},
+	{
+	}
+};
+
+static void its_enable_quirks(struct its_node *its)
+{
+	u32 iidr = readl_relaxed(its->base + GITS_IIDR);
+
+	gic_check_capabilities(iidr, its_errata, its);
+}
+
 static int its_probe(struct device_node *node, struct irq_domain *parent)
 {
 	struct resource res;
 	struct its_node *its;
 	void __iomem *its_base;
-	struct irq_domain *inner_domain = NULL;
 	u32 val;
 	u64 baser, tmp;
 	int err;
+	int numa_node;
 
 	err = of_address_to_resource(node, 0, &res);
 	if (err) {
 		pr_warn("%s: no regs?\n", node->full_name);
 		return -ENXIO;
 	}
+
+	/* get numa affinity of its node*/
+	numa_node = of_node_to_nid(node);
 
 	its_base = ioremap(res.start, resource_size(&res));
 	if (!its_base) {
@@ -1469,7 +1563,9 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 	INIT_LIST_HEAD(&its->its_device_list);
 	its->base = its_base;
 	its->phys_base = res.start;
+	its->msi_chip.of_node = node;
 	its->ite_size = ((readl_relaxed(its_base + GITS_TYPER) >> 4) & 0xf) + 1;
+	its->numa_node = numa_node;
 
 	its->cmd_base = kzalloc(ITS_CMD_QUEUE_SZ, GFP_KERNEL);
 	if (!its->cmd_base) {
@@ -1477,6 +1573,8 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 		goto out_free_its;
 	}
 	its->cmd_write = its->cmd_base;
+
+	its_enable_quirks(its);
 
 	err = its_alloc_tables(its);
 	if (err)
@@ -1514,22 +1612,26 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 	writeq_relaxed(0, its->base + GITS_CWRITER);
 	writel_relaxed(GITS_CTLR_ENABLE, its->base + GITS_CTLR);
 
-	if (of_property_read_bool(node, "msi-controller")) {
-		inner_domain = irq_domain_add_tree(NULL, &its_domain_ops, its);
-		if (!inner_domain) {
+	if (of_property_read_bool(its->msi_chip.of_node, "msi-controller")) {
+		its->domain = irq_domain_add_tree(NULL, &its_domain_ops, its);
+		if (!its->domain) {
 			err = -ENOMEM;
 			goto out_free_tables;
 		}
 
-		inner_domain->parent = parent;
+		its->domain->parent = parent;
 
-		its->domain = pci_msi_create_irq_domain(node,
-							&its_pci_msi_domain_info,
-							inner_domain);
-		if (!its->domain) {
+		its->msi_chip.domain = pci_msi_create_irq_domain(node,
+								 &its_pci_msi_domain_info,
+								 its->domain);
+		if (!its->msi_chip.domain) {
 			err = -ENOMEM;
 			goto out_free_domains;
 		}
+
+		err = of_pci_msi_chip_add(&its->msi_chip);
+		if (err)
+			goto out_free_domains;
 	}
 
 	spin_lock(&its_lock);
@@ -1539,10 +1641,10 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 	return 0;
 
 out_free_domains:
+	if (its->msi_chip.domain)
+		irq_domain_remove(its->msi_chip.domain);
 	if (its->domain)
 		irq_domain_remove(its->domain);
-	if (inner_domain)
-		irq_domain_remove(inner_domain);
 out_free_tables:
 	its_free_tables(its);
 out_free_cmd:

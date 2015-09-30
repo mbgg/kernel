@@ -42,6 +42,7 @@
 #include <asm/sizes.h>
 #include <asm/tlb.h>
 #include <asm/alternative.h>
+#include <asm/numa.h>
 
 #include "mm.h"
 
@@ -77,6 +78,20 @@ static phys_addr_t max_zone_dma_phys(void)
 	return min(offset + (1ULL << 32), memblock_end_of_DRAM());
 }
 
+#ifdef CONFIG_NUMA
+static void __init zone_sizes_init(unsigned long min, unsigned long max)
+{
+	unsigned long max_zone_pfns[MAX_NR_ZONES];
+
+	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
+	if (IS_ENABLED(CONFIG_ZONE_DMA))
+		max_zone_pfns[ZONE_DMA] = PFN_DOWN(max_zone_dma_phys());
+	max_zone_pfns[ZONE_NORMAL] = max;
+
+	free_area_init_nodes(max_zone_pfns);
+}
+
+#else
 static void __init zone_sizes_init(unsigned long min, unsigned long max)
 {
 	struct memblock_region *reg;
@@ -115,6 +130,7 @@ static void __init zone_sizes_init(unsigned long min, unsigned long max)
 
 	free_area_init_node(0, zone_size, min, zhole_size);
 }
+#endif /* CONFIG_NUMA */
 
 #ifdef CONFIG_HAVE_ARCH_PFN_VALID
 int pfn_valid(unsigned long pfn)
@@ -132,10 +148,15 @@ static void arm64_memory_present(void)
 static void arm64_memory_present(void)
 {
 	struct memblock_region *reg;
+	int nid = 0;
 
-	for_each_memblock(memory, reg)
-		memory_present(0, memblock_region_memory_base_pfn(reg),
-			       memblock_region_memory_end_pfn(reg));
+	for_each_memblock(memory, reg) {
+#ifdef CONFIG_NUMA
+		nid = reg->nid;
+#endif
+		memory_present(nid, memblock_region_memory_base_pfn(reg),
+				memblock_region_memory_end_pfn(reg));
+	}
 }
 #endif
 
@@ -170,7 +191,8 @@ void __init arm64_memblock_init(void)
 		memblock_reserve(__virt_to_phys(initrd_start), initrd_end - initrd_start);
 #endif
 
-	early_init_fdt_scan_reserved_mem();
+	if (!efi_enabled(EFI_MEMMAP))
+		early_init_fdt_scan_reserved_mem();
 
 	/* 4GB maximum for 32-bit only capable devices */
 	if (IS_ENABLED(CONFIG_ZONE_DMA))
@@ -192,6 +214,10 @@ void __init bootmem_init(void)
 
 	early_memtest(min << PAGE_SHIFT, max << PAGE_SHIFT);
 
+	high_memory = __va((max << PAGE_SHIFT) - 1) + 1;
+	max_pfn = max_low_pfn = max;
+
+	arm64_numa_init();
 	/*
 	 * Sparsemem tries to allocate bootmem in memory_present(), so must be
 	 * done after the fixed reservations.
@@ -200,9 +226,6 @@ void __init bootmem_init(void)
 
 	sparse_init();
 	zone_sizes_init(min, max);
-
-	high_memory = __va((max << PAGE_SHIFT) - 1) + 1;
-	max_pfn = max_low_pfn = max;
 }
 
 #ifndef CONFIG_SPARSEMEM_VMEMMAP
@@ -374,3 +397,54 @@ static int __init keepinitrd_setup(char *__unused)
 
 __setup("keepinitrd", keepinitrd_setup);
 #endif
+
+void __init early_init_dt_add_memory_arch(u64 base, u64 size)
+{
+	const u64 phys_offset = __pa(PAGE_OFFSET);
+
+	/*
+	 * This callback will be invoked both when booting via UEFI and when
+	 * booting via DT only. In the former case, we need to ignore memory
+	 * nodes in the DT since UEFI is authoritative when it comes to the
+	 * memory map. So ignore any invocations of this callback after
+	 * EFI_MEMMAP has been set.
+	 */
+	if (efi_enabled(EFI_MEMMAP))
+		return;
+
+	if (!PAGE_ALIGNED(base)) {
+		if (size < PAGE_SIZE - (base & ~PAGE_MASK)) {
+			pr_warn("Ignoring memory block 0x%llx - 0x%llx\n",
+				base, base + size);
+			return;
+		}
+		size -= PAGE_SIZE - (base & ~PAGE_MASK);
+		base = PAGE_ALIGN(base);
+	}
+	size &= PAGE_MASK;
+
+	if (base > MAX_MEMBLOCK_ADDR) {
+		pr_warning("Ignoring memory block 0x%llx - 0x%llx\n",
+				base, base + size);
+		return;
+	}
+
+	if (base + size - 1 > MAX_MEMBLOCK_ADDR) {
+		pr_warning("Ignoring memory range 0x%llx - 0x%llx\n",
+				((u64)MAX_MEMBLOCK_ADDR) + 1, base + size);
+		size = MAX_MEMBLOCK_ADDR - base + 1;
+	}
+
+	if (base + size < phys_offset) {
+		pr_warning("Ignoring memory block 0x%llx - 0x%llx\n",
+			   base, base + size);
+		return;
+	}
+	if (base < phys_offset) {
+		pr_warning("Ignoring memory range 0x%llx - 0x%llx\n",
+			   base, phys_offset);
+		size -= phys_offset - base;
+		base = phys_offset;
+	}
+	memblock_add(base, size);
+}

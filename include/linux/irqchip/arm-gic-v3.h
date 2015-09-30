@@ -229,6 +229,7 @@
 #define GITS_BASER_PAGE_SIZE_16K	(1UL << GITS_BASER_PAGE_SIZE_SHIFT)
 #define GITS_BASER_PAGE_SIZE_64K	(2UL << GITS_BASER_PAGE_SIZE_SHIFT)
 #define GITS_BASER_PAGE_SIZE_MASK	(3UL << GITS_BASER_PAGE_SIZE_SHIFT)
+#define GITS_BASER_PAGES_MAX		256
 
 #define GITS_BASER_TYPE_NONE		0
 #define GITS_BASER_TYPE_DEVICE		1
@@ -389,6 +390,9 @@ int its_cpu_init(void);
 int its_init(struct device_node *node, struct rdists *rdists,
 	     struct irq_domain *domain);
 
+typedef u32 (*its_pci_requester_id_t)(struct pci_dev *, u16);
+void set_its_pci_requester_id(its_pci_requester_id_t fn);
+struct irq_domain *gic_get_irq_domain(void);
 #endif
 
 #endif
