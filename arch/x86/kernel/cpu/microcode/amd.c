@@ -204,7 +204,7 @@ bool check_current_patch_level(u32 *rev, bool early)
 	bool ret = false;
 	u32 *levels;
 
-	rdmsr(MSR_AMD64_PATCH_LEVEL, lvl, dummy);
+	native_rdmsr(MSR_AMD64_PATCH_LEVEL, lvl, dummy);
 
 	if (IS_ENABLED(CONFIG_X86_32) && early)
 		levels = (u32 *)__pa_nodebug(&final_levels);
