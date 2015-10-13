@@ -728,6 +728,9 @@ int pci_msi_vec_count(struct pci_dev *dev)
 	if (!dev->msi_cap)
 		return -EINVAL;
 
+	if (!msi_multi_vec_supported)
+		return 1;
+
 	pci_read_config_word(dev, dev->msi_cap + PCI_MSI_FLAGS, &msgctl);
 	ret = 1 << ((msgctl & PCI_MSI_FLAGS_QMASK) >> 1);
 
@@ -1040,10 +1043,7 @@ int pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec)
 	if (minvec <= 0 || maxvec < minvec)
 		return -ERANGE;
 
-	if (msi_multi_vec_supported)
-		nvec = pci_msi_vec_count(dev);
-	else
-		nvec = 1;
+	nvec = pci_msi_vec_count(dev);
 	if (nvec < 0)
 		return nvec;
 	else if (nvec < minvec)
