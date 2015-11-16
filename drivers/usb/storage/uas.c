@@ -322,6 +322,8 @@ static void uas_stat_cmplt(struct urb *urb)
 	struct uas_dev_info *devinfo = (struct uas_dev_info *)shost->hostdata;
 	struct scsi_cmnd *cmnd;
 	struct uas_cmd_info *cmdinfo;
+	struct urb *data_in_urb = NULL;
+	struct urb *data_out_urb = NULL;
 	unsigned long flags;
 	u16 tag;
 
@@ -396,6 +398,14 @@ static void uas_stat_cmplt(struct urb *urb)
 			break;
 		}
 		uas_xfer_data(urb, cmnd, SUBMIT_DATA_OUT_URB);
+		break;
+	case IU_ID_RESPONSE:
+		/* Error, cancel data transfers */
+		data_in_urb = usb_get_urb(cmdinfo->data_in_urb);
+		data_out_urb = usb_get_urb(cmdinfo->data_out_urb);
+		cmdinfo->state &= ~COMMAND_INFLIGHT;
+		cmnd->result = DID_ERROR << 16;
+		uas_try_complete(cmnd, __func__);
 		break;
 	default:
 		scmd_printk(KERN_ERR, cmnd,
