@@ -27,7 +27,7 @@
 
 struct gen_pci_cfg_bus_ops {
 	u32 bus_shift;
-	void __iomem *(*map_bus)(struct pci_bus *, unsigned int, int);
+	struct pci_ops ops;
 };
 
 struct gen_pci_cfg_windows {
@@ -35,7 +35,7 @@ struct gen_pci_cfg_windows {
 	struct resource				*bus_range;
 	void __iomem				**win;
 
-	const struct gen_pci_cfg_bus_ops	*ops;
+	struct gen_pci_cfg_bus_ops		*ops;
 };
 
 struct gen_pci {
@@ -61,7 +61,11 @@ static void __iomem *gen_pci_map_cfg_bus_cam(struct pci_bus *bus,
 
 static struct gen_pci_cfg_bus_ops gen_pci_cfg_cam_bus_ops = {
 	.bus_shift	= 16,
-	.map_bus	= gen_pci_map_cfg_bus_cam,
+	.ops		= {
+		.map_bus	= gen_pci_map_cfg_bus_cam,
+		.read		= pci_generic_config_read,
+		.write		= pci_generic_config_write,
+	}
 };
 
 static void __iomem *gen_pci_map_cfg_bus_ecam(struct pci_bus *bus,
@@ -81,12 +85,52 @@ static void __iomem *gen_pci_map_cfg_bus_ecam(struct pci_bus *bus,
 
 static struct gen_pci_cfg_bus_ops gen_pci_cfg_ecam_bus_ops = {
 	.bus_shift	= 20,
-	.map_bus	= gen_pci_map_cfg_bus_ecam,
+	.ops		= {
+		.map_bus	= gen_pci_map_cfg_bus_ecam,
+		.read		= pci_generic_config_read,
+		.write		= pci_generic_config_write,
+	}
 };
 
-static struct pci_ops gen_pci_ops = {
-	.read	= pci_generic_config_read,
-	.write	= pci_generic_config_write,
+#ifdef CONFIG_PCI_HOST_THUNDER
+int thunder_ecam_config_read(struct pci_bus *bus, unsigned int devfn,
+			     int where, int size, u32 *val);
+int thunder_ecam_config_write(struct pci_bus *bus, unsigned int devfn,
+			     int where, int size, u32 val);
+static struct gen_pci_cfg_bus_ops gen_pci_cfg_thunder_ecam_bus_ops = {
+	.bus_shift	= 20,
+	.ops		= {
+		.map_bus	= gen_pci_map_cfg_bus_ecam,
+		.read		= thunder_ecam_config_read,
+		.write		= thunder_ecam_config_write,
+	}
+};
+#endif
+
+static void __iomem *gen_pci_map_cfg_bus_thunder_pem(struct pci_bus *bus,
+						     unsigned int devfn,
+						     int where)
+{
+	struct gen_pci *pci = bus->sysdata;
+	resource_size_t idx = bus->number - pci->cfg.bus_range->start;
+
+	/*
+	 * Thunder PEM is a PCIe RC, but without a root bridge.  On
+	 * the primary bus, ignore accesses for devices other than
+	 * the first device.
+	 */
+	if (idx == 0 && (devfn & ~7u))
+		return NULL;
+	return pci->cfg.win[idx] + ((devfn << 16) | where);
+}
+
+static struct gen_pci_cfg_bus_ops gen_pci_cfg_thunder_pem_bus_ops = {
+	.bus_shift	= 24,
+	.ops		= {
+		.map_bus	= gen_pci_map_cfg_bus_thunder_pem,
+		.read		= pci_generic_config_read,
+		.write		= pci_generic_config_write,
+	}
 };
 
 static const struct of_device_id gen_pci_of_match[] = {
@@ -96,6 +140,12 @@ static const struct of_device_id gen_pci_of_match[] = {
 	{ .compatible = "pci-host-ecam-generic",
 	  .data = &gen_pci_cfg_ecam_bus_ops },
 
+	{ .compatible = "cavium,pci-host-thunder-pem",
+	  .data = &gen_pci_cfg_thunder_pem_bus_ops },
+#ifdef CONFIG_PCI_HOST_THUNDER
+	{ .compatible = "cavium,pci-host-thunder-ecam",
+	  .data = &gen_pci_cfg_thunder_ecam_bus_ops },
+#endif
 	{ },
 };
 MODULE_DEVICE_TABLE(of, gen_pci_of_match);
@@ -167,6 +217,7 @@ static int gen_pci_parse_map_cfg_windows(struct gen_pci *pci)
 	struct resource *bus_range;
 	struct device *dev = pci->host.dev.parent;
 	struct device_node *np = dev->of_node;
+	u32 sz = 1 << pci->cfg.ops->bus_shift;
 
 	err = of_address_to_resource(np, 0, &pci->cfg.res);
 	if (err) {
@@ -194,10 +245,9 @@ static int gen_pci_parse_map_cfg_windows(struct gen_pci *pci)
 	bus_range = pci->cfg.bus_range;
 	for (busn = bus_range->start; busn <= bus_range->end; ++busn) {
 		u32 idx = busn - bus_range->start;
-		u32 sz = 1 << pci->cfg.ops->bus_shift;
 
 		pci->cfg.win[idx] = devm_ioremap(dev,
-						 pci->cfg.res.start + busn * sz,
+						 pci->cfg.res.start + idx * sz,
 						 sz);
 		if (!pci->cfg.win[idx])
 			return -ENOMEM;
@@ -214,6 +264,47 @@ static int gen_pci_setup(int nr, struct pci_sys_data *sys)
 	return 1;
 }
 #endif
+
+#ifdef CONFIG_KVM_ARM_VGIC
+struct msi_chip *vgic_its_get_msi_node(struct pci_bus *bus, struct msi_chip *msi);
+#endif
+
+static int pcie_msi_enable_cb(struct pci_dev *dev, void *arg)
+{
+	if (dev->subordinate) {
+		/* it is a bridge, propagate the msi */
+		dev->subordinate->msi = dev->bus->msi;
+	}
+	return 0;
+}
+
+static int pcie_msi_enable(struct device_node *np, struct pci_bus *bus)
+{
+	struct device_node *msi_node;
+#ifdef CONFIG_KVM_ARM_VGIC
+	struct msi_chip *vits_msi;
+#endif
+	struct msi_controller *msi;
+
+	msi_node = of_parse_phandle(np, "msi-parent", 0);
+	if (!msi_node)
+		return -ENODEV;
+
+	msi = of_pci_find_msi_chip_by_node(msi_node);
+	if (!msi)
+		return -ENODEV;
+
+#ifdef CONFIG_KVM_ARM_VGIC
+	vits_msi = vgic_its_get_msi_node(bus, msi);
+
+	msi->dev = bus->bridge->parent;
+	bus->msi = vits_msi;
+#else
+	bus->msi = msi;
+#endif
+	pci_walk_bus(bus, pcie_msi_enable_cb, NULL);
+	return 0;
+}
 
 static int gen_pci_probe(struct platform_device *pdev)
 {
@@ -247,8 +338,7 @@ static int gen_pci_probe(struct platform_device *pdev)
 	of_pci_check_probe_only();
 
 	of_id = of_match_node(gen_pci_of_match, np);
-	pci->cfg.ops = of_id->data;
-	gen_pci_ops.map_bus = pci->cfg.ops->map_bus;
+	pci->cfg.ops = (struct gen_pci_cfg_bus_ops *)of_id->data;
 	pci->host.dev.parent = dev;
 	INIT_LIST_HEAD(&pci->host.windows);
 	INIT_LIST_HEAD(&pci->resources);
@@ -269,11 +359,12 @@ static int gen_pci_probe(struct platform_device *pdev)
 	pci_common_init_dev(dev, &hw);
 #else
 	bus = pci_scan_root_bus(&pdev->dev, pci->cfg.bus_range->start,
-				&gen_pci_ops, pci, &pci->resources);
+				&pci->cfg.ops->ops, pci, &pci->resources);
 	if (!bus) {
 		dev_err(&pdev->dev, "failed to enable PCIe ports\n");
 		return -ENODEV;
 	}
+	pcie_msi_enable(np, bus);
 
 	if (!pci_has_flag(PCI_PROBE_ONLY)) {
 		pci_bus_size_bridges(bus);
