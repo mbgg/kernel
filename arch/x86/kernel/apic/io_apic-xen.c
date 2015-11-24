@@ -1335,12 +1335,6 @@ static void setup_ioapic_irq(unsigned int irq, struct irq_cfg *cfg,
 			.triggering = attr->trigger,
 			.polarity = attr->polarity
 		};
-		struct physdev_map_pirq map_pirq = {
-			.domid = DOMID_SELF,
-			.type = MAP_PIRQ_TYPE_GSI,
-			.index = gsi,
-			.pirq = gsi
-		};
 
 		switch (HYPERVISOR_physdev_op(PHYSDEVOP_setup_gsi,
 					      &setup_gsi)) {
@@ -1349,9 +1343,7 @@ static void setup_ioapic_irq(unsigned int irq, struct irq_cfg *cfg,
 				break;
 			/* fall through */
 		case 0:
-			evtchn_register_pirq(irq, gsi);
-			if (HYPERVISOR_physdev_op(PHYSDEVOP_map_pirq,
-						  &map_pirq) == 0) {
+			if (evtchn_register_pirq(irq, gsi) == 0) {
 				/* fake (for init_IO_APIC_traps()): */
 				cfg->vector = gsi;
 				return;
