@@ -34,6 +34,8 @@
 /* NIC priv flags */
 #define	NIC_SRIOV_ENABLED		BIT(0)
 
+#define	VNIC_NAPI_WEIGHT		NAPI_POLL_WEIGHT
+
 /* Min/Max packet size */
 #define	NIC_HW_MIN_FRS			64
 #define	NIC_HW_MAX_FRS			9200 /* 9216 max packet including FCS */
@@ -120,10 +122,9 @@
  * Calculated for SCLK of 700Mhz
  * value written should be a 1/16th of what is expected
  *
- * 1 tick per 0.05usec = value of 2.2
- * This 10% would be covered in CQ timer thresh value
+ * 1 tick per 0.025usec
  */
-#define NICPF_CLK_PER_INT_TICK		2
+#define NICPF_CLK_PER_INT_TICK		1
 
 /* Time to wait before we decide that a SQ is stuck.
  *
@@ -135,6 +136,7 @@
 #define	NICVF_TX_TIMEOUT		(50 * HZ)
 
 struct nicvf_cq_poll {
+	struct  nicvf *nicvf;
 	u8	cq_idx;		/* Completion queue index */
 	struct	napi_struct napi;
 };
@@ -161,6 +163,8 @@ struct nicvf_rss_info {
 	u8  ind_tbl[NIC_MAX_RSS_IDR_TBL_SIZE];
 	u64 key[RSS_HASH_KEY_SIZE];
 } ____cacheline_aligned_in_smp;
+
+#define pass1_silicon(nic)		((nic)->pdev->revision < 8)
 
 enum rx_stats_reg_offset {
 	RX_OCTS = 0x0,
@@ -248,22 +252,37 @@ struct nicvf_drv_stats {
 	u64 rx_frames_jumbo;
 	u64 rx_drops;
 
+	u64 rcv_buffer_alloc_failures;
+
 	/* Tx */
 	u64 tx_frames_ok;
 	u64 tx_drops;
 	u64 tx_tso;
+	u64 tx_timeout;
 	u64 txq_stop;
 	u64 txq_wake;
 };
 
 struct nicvf {
+	struct nicvf		*pnicvf;
 	struct net_device	*netdev;
 	struct pci_dev		*pdev;
 	u8			vf_id;
 	u8			node;
-	u8			tns_mode;
+	bool			tns_mode:1;
+	bool                    sqs_mode:1;
+	bool			loopback_supported:1;
+	bool			hw_tso:1;
 	u16			mtu;
 	struct queue_set	*qs;
+#define	MAX_SQS_PER_VF_SINGLE_NODE		5
+#define	MAX_SQS_PER_VF				11
+	u8			sqs_id;
+	u8			sqs_count; /* Secondary Qset count */
+	struct nicvf		*snicvf[MAX_SQS_PER_VF];
+	u8			rx_queues;
+	u8			tx_queues;
+	u8			max_queues;
 	void __iomem		*reg_base;
 	bool			link_up;
 	u8			duplex;
@@ -295,10 +314,10 @@ struct nicvf {
 	char			irq_name[NIC_VF_MSIX_VECTORS][20];
 	bool			irq_allocated[NIC_VF_MSIX_VECTORS];
 
-	bool			pf_ready_to_rcv_msg;
+	/* VF <-> PF mailbox communication */
 	bool			pf_acked;
 	bool			pf_nacked;
-	bool			bgx_stats_acked;
+	bool			set_mac_pending;
 } ____cacheline_aligned_in_smp;
 
 /* PF <--> VF Mailbox communication
@@ -329,14 +348,21 @@ struct nicvf {
 #define	NIC_MBOX_MSG_RQ_SW_SYNC		0x0F	/* Flush inflight pkts to RQ */
 #define	NIC_MBOX_MSG_BGX_STATS		0x10	/* Get stats from BGX */
 #define	NIC_MBOX_MSG_BGX_LINK_CHANGE	0x11	/* BGX:LMAC link status */
-#define NIC_MBOX_MSG_CFG_DONE		0x12	/* VF configuration done */
-#define NIC_MBOX_MSG_SHUTDOWN		0x13	/* VF is being shutdown */
+#define	NIC_MBOX_MSG_ALLOC_SQS		0x12	/* Allocate secondary Qset */
+#define	NIC_MBOX_MSG_NICVF_PTR		0x13	/* Send nicvf ptr to PF */
+#define	NIC_MBOX_MSG_PNICVF_PTR		0x14	/* Get primary qset nicvf ptr */
+#define	NIC_MBOX_MSG_SNICVF_PTR		0x15	/* Send sqet nicvf ptr to PVF */
+#define	NIC_MBOX_MSG_LOOPBACK		0x16	/* Set interface in loopback */
+#define	NIC_MBOX_MSG_CFG_DONE		0xF0	/* VF configuration done */
+#define	NIC_MBOX_MSG_SHUTDOWN		0xF1	/* VF is being shutdown */
 
 struct nic_cfg_msg {
 	u8    msg;
 	u8    vf_id;
-	u8    tns_mode;
 	u8    node_id;
+	bool  tns_mode:1;
+	bool  sqs_mode:1;
+	bool  loopback_supported:1;
 	u8    mac_addr[ETH_ALEN];
 };
 
@@ -344,6 +370,7 @@ struct nic_cfg_msg {
 struct qs_cfg_msg {
 	u8    msg;
 	u8    num;
+	u8    sqs_count;
 	u64   cfg;
 };
 
@@ -360,6 +387,7 @@ struct sq_cfg_msg {
 	u8    msg;
 	u8    qs_num;
 	u8    sq_num;
+	bool  sqs_mode;
 	u64   cfg;
 };
 
@@ -419,6 +447,28 @@ struct bgx_link_status {
 	u32   speed;
 };
 
+/* Get Extra Qset IDs */
+struct sqs_alloc {
+	u8    msg;
+	u8    vf_id;
+	u8    qs_count;
+};
+
+struct nicvf_ptr {
+	u8    msg;
+	u8    vf_id;
+	bool  sqs_mode;
+	u8    sqs_id;
+	u64   nicvf;
+};
+
+/* Set interface in loopback mode */
+struct set_loopback {
+	u8    msg;
+	u8    vf_id;
+	bool  enable;
+};
+
 /* 128 bit shared memory between PF and each VF */
 union nic_mbx {
 	struct { u8 msg; }	msg;
@@ -433,6 +483,9 @@ union nic_mbx {
 	struct rss_cfg_msg	rss_cfg;
 	struct bgx_stats_msg    bgx_stats;
 	struct bgx_link_status  link_status;
+	struct sqs_alloc        sqs_alloc;
+	struct nicvf_ptr	nicvf;
+	struct set_loopback	lbk;
 };
 
 #define NIC_NODE_ID_MASK	0x03
