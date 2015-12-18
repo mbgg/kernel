@@ -158,7 +158,12 @@ int xen_pcibk_enable_msi(struct xen_pcibk_device *pdev,
 	if (unlikely(verbose_request))
 		printk(KERN_DEBUG DRV_NAME ": %s: enable MSI\n", pci_name(dev));
 
-	status = pci_enable_msi_range(dev, 1, nvec);
+	if (dev->msi_enabled)
+		status = -EALREADY;
+	else if (dev->msix_enabled)
+		status = -ENXIO;
+	else
+		status = pci_enable_msi_range(dev, 1, nvec);
 	if (status < 0 || status > nvec) {
 		pr_warn_ratelimited("%s: error %d enabling %u-vector MSI for Dom%u\n",
 				    pci_name(dev), status, nvec,
