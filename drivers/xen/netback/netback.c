@@ -1138,9 +1138,7 @@ static void tx_add_credit(netif_t *netif)
 	 * Allow a burst big enough to transmit a jumbo packet of up to 128kB.
 	 * Otherwise the interface can seize up due to insufficient credit.
 	 */
-	max_burst = RING_GET_REQUEST(&netif->tx, netif->tx.req_cons)->size;
-	max_burst = min(max_burst, 131072UL);
-	max_burst = max(max_burst, netif->credit_bytes);
+	max_burst = max(131072UL, netif->credit_bytes);
 
 	/* Take care that adding a new chunk of credit doesn't wrap to zero. */
 	max_credit = netif->remaining_credit + netif->credit_bytes;
@@ -1358,6 +1356,7 @@ static int netbk_count_requests(netif_t *netif, netif_tx_request_t *first,
 		}
 
 		*txp = *RING_GET_REQUEST(&netif->tx, cons + slots);
+		barrier();
 
 		/*
 		 * If the guest submitted a frame >= 64 KiB then first->size
@@ -1636,6 +1635,7 @@ int netbk_get_extras(netif_t *netif, struct netif_extra_info *extras,
 
 		memcpy(&extra, RING_GET_REQUEST(&netif->tx, cons),
 		       sizeof(extra));
+		barrier();
 		if (unlikely(!extra.type ||
 			     extra.type >= XEN_NETIF_EXTRA_TYPE_MAX)) {
 			netif->tx.req_cons = ++cons;
@@ -1739,6 +1739,7 @@ static void net_tx_action(unsigned long group)
 		i = netif->tx.req_cons;
 		rmb(); /* Ensure that we see the request before we copy it. */
 		memcpy(&txreq, RING_GET_REQUEST(&netif->tx, i), sizeof(txreq));
+		barrier();
 
 		/* Credit-based scheduling. */
 		if (txreq.size > netif->remaining_credit) {
