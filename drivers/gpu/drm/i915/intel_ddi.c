@@ -1967,18 +1967,22 @@ void intel_ddi_pll_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t val = I915_READ(LCPLL_CTL);
+	int cdclk_freq;
 
 	if (IS_SKYLAKE(dev))
 		skl_shared_dplls_init(dev_priv);
 	else
 		hsw_shared_dplls_init(dev_priv);
 
-	DRM_DEBUG_KMS("CDCLK running at %dKHz\n",
-		      intel_ddi_get_cdclk_freq(dev_priv));
+	cdclk_freq = intel_ddi_get_cdclk_freq(dev_priv);
+	DRM_DEBUG_KMS("CDCLK running at %dKHz\n", cdclk_freq);
 
 	if (IS_SKYLAKE(dev)) {
+		dev_priv->skl_boot_cdclk = cdclk_freq;
 		if (!(I915_READ(LCPLL1_CTL) & LCPLL_PLL_ENABLE))
 			DRM_ERROR("LCPLL1 is disabled\n");
+		else
+			intel_display_power_get(dev_priv, POWER_DOMAIN_PLLS);
 	} else {
 		/*
 		 * The LCPLL register should be turned on by the BIOS. For now

@@ -5298,6 +5298,9 @@ enum skl_disp_power_wells {
 #define  DISP_FBC_WM_DIS		(1<<15)
 #define DISP_ARB_CTL2	0x45004
 #define  DISP_DATA_PARTITION_5_6	(1<<6)
+#define DBUF_CTL	0x45008
+#define  DBUF_POWER_REQUEST		(1<<31)
+#define  DBUF_POWER_STATE		(1<<30)
 #define GEN7_MSG_CTL	0x45010
 #define  WAIT_FOR_PCH_RESET_ACK		(1<<1)
 #define  WAIT_FOR_PCH_FLR_ACK		(1<<0)
@@ -6232,6 +6235,9 @@ enum skl_disp_power_wells {
 #define GEN6_PCODE_MAILBOX			0x138124
 #define   GEN6_PCODE_READY			(1<<31)
 #define   GEN6_READ_OC_PARAMS			0xc
+#define   SKL_PCODE_CDCLK_CONTROL		0x7
+#define     SKL_CDCLK_PREPARE_FOR_CHANGE	0x3
+#define     SKL_CDCLK_READY_FOR_CHANGE		0x1
 #define   GEN6_PCODE_WRITE_MIN_FREQ_TABLE	0x8
 #define   GEN6_PCODE_READ_MIN_FREQ_TABLE	0x9
 #define	  GEN6_PCODE_WRITE_RC6VIDS		0x4

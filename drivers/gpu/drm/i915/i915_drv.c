@@ -1033,6 +1033,8 @@ static int skl_suspend_complete(struct drm_i915_private *dev_priv)
 	 */
 	intel_csr_load_status_set(dev_priv, FW_UNINITIALIZED);
 
+	skl_uninit_cdclk(dev_priv);
+
 	return 0;
 }
 
@@ -1047,6 +1049,7 @@ static int skl_resume_prepare(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
 
+	skl_init_cdclk(dev_priv);
 	intel_csr_load_program(dev);
 
 	return 0;
@@ -1514,6 +1517,8 @@ static int intel_runtime_resume(struct device *device)
 		ret = skl_resume_prepare(dev_priv);
 	else if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		hsw_disable_pc8(dev_priv);
+	else if (IS_SKYLAKE(dev_priv))
+		ret = skl_resume_prepare(dev_priv);
 	else if (IS_VALLEYVIEW(dev_priv))
 		ret = vlv_resume_prepare(dev_priv, true);
 
