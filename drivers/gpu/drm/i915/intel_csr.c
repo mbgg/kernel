@@ -25,7 +25,7 @@
 #include "i915_drv.h"
 #include "i915_reg.h"
 
-#define I915_CSR_SKL "i915/skl_dmc_ver4.bin"
+#define I915_CSR_SKL "i915/skl_dmc_ver1.bin"
 
 MODULE_FIRMWARE(I915_CSR_SKL);
 
