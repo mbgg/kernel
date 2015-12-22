@@ -1058,6 +1058,11 @@ void intel_modeset_preclose(struct drm_device *dev, struct drm_file *file);
 unsigned long intel_plane_obj_offset(struct intel_plane *intel_plane,
 				     struct drm_i915_gem_object *obj);
 
+/* intel_csr.c */
+void intel_csr_ucode_init(struct drm_device *dev);
+void intel_csr_load_program(struct drm_device *dev);
+void intel_csr_ucode_fini(struct drm_device *dev);
+
 /* intel_dp.c */
 void intel_dp_init(struct drm_device *dev, int output_reg, enum port port);
 bool intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
