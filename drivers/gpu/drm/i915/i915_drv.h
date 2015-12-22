@@ -666,6 +666,12 @@ struct intel_uncore {
 #define for_each_fw_domain(domain__, dev_priv__, i__) \
 	for_each_fw_domain_mask(domain__, FORCEWAKE_ALL, dev_priv__, i__)
 
+enum csr_state {
+	FW_UNINITIALIZED = 0,
+	FW_LOADED,
+	FW_FAILED
+};
+
 struct intel_csr {
 	const char *fw_path;
 	__be32 *dmc_payload;
@@ -673,6 +679,7 @@ struct intel_csr {
 	uint32_t mmio_count;
 	uint32_t mmioaddr[8];
 	uint32_t mmiodata[8];
+	enum csr_state state;
 };
 
 #define DEV_INFO_FOR_EACH_FLAG(func, sep) \
