@@ -286,7 +286,7 @@ struct queue_limits {
 	unsigned long		seg_boundary_mask;
 
 	unsigned int		max_hw_sectors;
-	unsigned int		max_dev_sectors;
+	/*unsigned int		max_dev_sectors;*/ /* moved below */
 	unsigned int		chunk_sectors;
 	unsigned int		max_sectors;
 	unsigned int		max_segment_size;
@@ -308,6 +308,10 @@ struct queue_limits {
 	unsigned char		cluster;
 	unsigned char		discard_zeroes_data;
 	unsigned char		raid_partial_stripes_expensive;
+#ifndef __GENKSYMS__
+	/* moved here due to kABI compatibility */
+	unsigned int		max_dev_sectors;
+#endif
 };
 
 struct request_queue {
