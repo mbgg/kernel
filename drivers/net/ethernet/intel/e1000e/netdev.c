@@ -4193,6 +4193,8 @@ static cycle_t e1000e_cyclecounter_read(const struct cyclecounter *cc)
 		 * rate and is a multiple of incvalue
 		 */
 		incvalue = er32(TIMINCA) & E1000_TIMINCA_INCVALUE_MASK;
+		if (WARN_ON(!incvalue))
+			return 0;
 		for (i = 0; i < E1000_MAX_82574_SYSTIM_REREADS; i++) {
 			/* latch SYSTIMH on read of SYSTIML */
 			systim_next = (cycle_t)er32(SYSTIML);
