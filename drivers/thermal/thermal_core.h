@@ -41,7 +41,6 @@ struct thermal_instance {
 	struct thermal_zone_device *tz;
 	struct thermal_cooling_device *cdev;
 	int trip;
-	bool initialized;
 	unsigned long upper;	/* Highest cooling state for this trip point */
 	unsigned long lower;	/* Lowest cooling state for this trip point */
 	unsigned long target;	/* expected cooling state */
@@ -49,6 +48,9 @@ struct thermal_instance {
 	struct device_attribute attr;
 	struct list_head tz_node; /* node in tz->thermal_instances */
 	struct list_head cdev_node; /* node in cdev->thermal_instances */
+#ifndef __GENKSYMS__
+	bool initialized;
+#endif
 };
 
 int thermal_register_governor(struct thermal_governor *);
