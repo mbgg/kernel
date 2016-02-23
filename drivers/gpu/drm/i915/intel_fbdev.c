@@ -153,13 +153,6 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 		goto out;
 	}
 
-	/* Flush everything out, we'll be doing GTT only from now on */
-	ret = intel_pin_and_fence_fb_obj(NULL, fb, NULL, NULL);
-	if (ret) {
-		DRM_ERROR("failed to pin obj: %d\n", ret);
-		goto out;
-	}
-
 	mutex_unlock(&dev->struct_mutex);
 
 	ifbdev->fb = to_intel_framebuffer(fb);
@@ -214,6 +207,14 @@ static int intelfb_create(struct drm_fb_helper *helper,
 	size = obj->base.size;
 
 	mutex_lock(&dev->struct_mutex);
+
+	/* Pin the GGTT vma for our access via info->screen_base.
+	 * This also validates that any existing fb inherited from the
+	 * BIOS is suitable for own access.
+	 */
+	ret = intel_pin_and_fence_fb_obj(NULL, &ifbdev->fb->base, NULL, NULL);
+	if (ret)
+		goto out_unlock;
 
 	info = framebuffer_alloc(0, &dev->pdev->dev);
 	if (!info) {
@@ -285,6 +286,7 @@ static int intelfb_create(struct drm_fb_helper *helper,
 out_unpin:
 	i915_gem_object_ggtt_unpin(obj);
 	drm_gem_object_unreference(&obj->base);
+out_unlock:
 	mutex_unlock(&dev->struct_mutex);
 	return ret;
 }
@@ -527,6 +529,11 @@ static const struct drm_fb_helper_funcs intel_fb_helper_funcs = {
 static void intel_fbdev_destroy(struct drm_device *dev,
 				struct intel_fbdev *ifbdev)
 {
+	/* We rely on the object-free to release the VMA pinning for
+	 * the info->screen_base mmaping. Leaking the VMA is simpler than
+	 * trying to rectify all the possible error paths leading here.
+	 */
+
 	if (ifbdev->helper.fbdev) {
 		struct fb_info *info = ifbdev->helper.fbdev;
 
