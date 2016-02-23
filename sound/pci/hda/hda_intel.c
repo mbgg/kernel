@@ -346,6 +346,8 @@ enum {
 					((pci)->device == 0x0d0c) || \
 					((pci)->device == 0x160c))
 
+#define IS_BROXTON(pci)	((pci)->device == 0x5a98)
+
 static char *driver_short_names[] = {
 	[AZX_DRIVER_ICH] = "HDA Intel",
 	[AZX_DRIVER_PCH] = "HDA Intel PCH",
@@ -495,6 +497,36 @@ static void azx_init_pci(struct azx *chip)
 			(snoop & INTEL_SCH_HDA_DEVC_NOSNOOP) ?
 			"Disabled" : "Enabled");
         }
+}
+
+/* Skylake/Broxton display HD-A controller Extended Mode registers */
+#define AZX_REG_SKL_EM4L               0x1040
+
+/*
+ * In BXT-P A0, HD-Audio DMA requests is later than expected,
+ * and makes an audio stream sensitive to system latencies when
+ * 24/32 bits are playing.
+ * Adjusting threshold of DMA fifo to force the DMA request
+ * sooner to improve latency tolerance at the expense of power.
+ */
+static void bxt_reduce_dma_latency(struct azx *chip)
+{
+	u32 val;
+
+	val = azx_readl(chip, SKL_EM4L);
+	val &= (0x3 << 20);
+	azx_writel(chip, SKL_EM4L, val);
+}
+
+static void hda_intel_init_chip(struct azx *chip, bool full_reset)
+{
+	struct pci_dev *pci = chip->pci;
+
+	azx_init_chip(chip, full_reset);
+
+	/* reduce dma latency to avoid noise */
+	if (IS_BROXTON(pci))
+		bxt_reduce_dma_latency(chip);
 }
 
 /* calculate runtime delay from LPIB */
@@ -833,7 +865,7 @@ static int azx_resume(struct device *dev)
 		return -EIO;
 	azx_init_pci(chip);
 
-	azx_init_chip(chip, true);
+	hda_intel_init_chip(chip, true);
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D0);
 	return 0;
@@ -930,7 +962,7 @@ static int azx_runtime_resume(struct device *dev)
 	status = azx_readw(chip, STATESTS);
 
 	azx_init_pci(chip);
-	azx_init_chip(chip, true);
+	hda_intel_init_chip(chip, true);
 
 	bus = chip->bus;
 	if (status && bus) {
@@ -1628,7 +1660,7 @@ static int azx_first_init(struct azx *chip)
 		haswell_set_bclk(hda);
 	}
 
-	azx_init_chip(chip, (probe_only[dev] & 2) == 0);
+	hda_intel_init_chip(chip, (probe_only[dev] & 2) == 0);
 
 	/* codec detection */
 	if (!chip->codec_mask) {
