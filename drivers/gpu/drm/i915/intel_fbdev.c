@@ -115,7 +115,7 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 {
 	struct intel_fbdev *ifbdev =
 		container_of(helper, struct intel_fbdev, helper);
-	struct drm_framebuffer *fb;
+	struct drm_framebuffer *fb = NULL;
 	struct drm_device *dev = helper->dev;
 	struct drm_mode_fb_cmd2 mode_cmd = {};
 	struct drm_i915_gem_object *obj;
@@ -132,6 +132,8 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 				    DIV_ROUND_UP(sizes->surface_bpp, 8), 64);
 	mode_cmd.pixel_format = drm_mode_legacy_fb_format(sizes->surface_bpp,
 							  sizes->surface_depth);
+
+	mutex_lock(&dev->struct_mutex);
 
 	size = mode_cmd.pitches[0] * mode_cmd.height;
 	size = PAGE_ALIGN(size);
@@ -155,16 +157,19 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 	ret = intel_pin_and_fence_fb_obj(NULL, fb, NULL, NULL);
 	if (ret) {
 		DRM_ERROR("failed to pin obj: %d\n", ret);
-		goto out_fb;
+		goto out;
 	}
+
+	mutex_unlock(&dev->struct_mutex);
 
 	ifbdev->fb = to_intel_framebuffer(fb);
 
 	return 0;
 
-out_fb:
-	drm_framebuffer_remove(fb);
 out:
+	mutex_unlock(&dev->struct_mutex);
+	if (!IS_ERR_OR_NULL(fb))
+		drm_framebuffer_unreference(fb);
 	return ret;
 }
 
@@ -182,8 +187,6 @@ static int intelfb_create(struct drm_fb_helper *helper,
 	int size, ret;
 	bool prealloc = false;
 
-	mutex_lock(&dev->struct_mutex);
-
 	if (intel_fb &&
 	    (sizes->fb_width > intel_fb->base.width ||
 	     sizes->fb_height > intel_fb->base.height)) {
@@ -198,7 +201,7 @@ static int intelfb_create(struct drm_fb_helper *helper,
 		DRM_DEBUG_KMS("no BIOS fb, allocating a new one\n");
 		ret = intelfb_alloc(helper, sizes);
 		if (ret)
-			goto out_unlock;
+			return ret;
 		intel_fb = ifbdev->fb;
 	} else {
 		DRM_DEBUG_KMS("re-using BIOS fb\n");
@@ -209,6 +212,8 @@ static int intelfb_create(struct drm_fb_helper *helper,
 
 	obj = intel_fb->obj;
 	size = obj->base.size;
+
+	mutex_lock(&dev->struct_mutex);
 
 	info = framebuffer_alloc(0, &dev->pdev->dev);
 	if (!info) {
@@ -280,7 +285,6 @@ static int intelfb_create(struct drm_fb_helper *helper,
 out_unpin:
 	i915_gem_object_ggtt_unpin(obj);
 	drm_gem_object_unreference(&obj->base);
-out_unlock:
 	mutex_unlock(&dev->struct_mutex);
 	return ret;
 }
