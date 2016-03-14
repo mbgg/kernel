@@ -21,10 +21,8 @@ struct scm_creds {
 struct scm_fp_list {
 	short			count;
 	short			max;
-	struct file		*fp[SCM_MAX_FD];
-#ifndef __GENKSYMS__
 	struct user_struct	*user;
-#endif
+	struct file		*fp[SCM_MAX_FD];
 };
 
 struct scm_cookie {
