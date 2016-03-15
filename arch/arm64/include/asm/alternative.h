@@ -1,6 +1,8 @@
 #ifndef __ASM_ALTERNATIVE_H
 #define __ASM_ALTERNATIVE_H
 
+#ifndef __ASSEMBLY__
+
 #include <linux/types.h>
 #include <linux/stddef.h>
 #include <linux/stringify.h>
@@ -40,5 +42,71 @@ void free_alternatives_memory(void);
 	".if ((664b-663b) != (662b-661b))\n\t"				\
 	"	.error \"Alternatives instruction length mismatch\"\n\t"\
 	".endif\n"
+
+#else
+
+.macro altinstruction_entry orig_offset alt_offset feature orig_len alt_len
+	.word \orig_offset - .
+	.word \alt_offset - .
+	.hword \feature
+	.byte \orig_len
+	.byte \alt_len
+.endm
+
+.macro alternative_insn insn1 insn2 cap
+661:	\insn1
+662:	.pushsection .altinstructions, "a"
+	altinstruction_entry 661b, 663f, \cap, 662b-661b, 664f-663f
+	.popsection
+	.pushsection .altinstr_replacement, "ax"
+663:	\insn2
+664:	.popsection
+	.if ((664b-663b) != (662b-661b))
+		.error "Alternatives instruction length mismatch"
+	.endif
+.endm
+
+/*
+ * Begin an alternative code sequence.
+ *
+ * The code that follows this macro will be assembled and linked as
+ * normal. There are no restrictions on this code.
+ */
+.macro alternative_if_not cap
+	.pushsection .altinstructions, "a"
+	altinstruction_entry 661f, 663f, \cap, 662f-661f, 664f-663f
+	.popsection
+661:
+.endm
+
+/*
+ * Provide the alternative code sequence.
+ *
+ * The code that follows this macro is assembled into a special
+ * section to be used for dynamic patching. Code that follows this
+ * macro must:
+ *
+ * 1. Be exactly the same length (in bytes) as the default code
+ *    sequence.
+ *
+ * 2. Not contain a branch target that is used outside of the
+ *    alternative sequence it is defined in (branches into an
+ *    alternative sequence are not fixed up).
+ */
+.macro alternative_else
+662:	.pushsection .altinstr_replacement, "ax"
+663:
+.endm
+
+/*
+ * Complete an alternative code sequence.
+ */
+.macro alternative_endif
+664:	.popsection
+	.org	. - (664b-663b) + (662b-661b)
+	.org	. - (662b-661b) + (664b-663b)
+.endm
+
+#endif  /*  __ASSEMBLY__  */
 
 #endif /* __ASM_ALTERNATIVE_H */
