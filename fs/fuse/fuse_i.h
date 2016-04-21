@@ -254,7 +254,6 @@ enum fuse_req_state {
 
 /** The request IO state (for asynchronous processing) */
 struct fuse_io_priv {
-	struct kref refcnt;
 	int async;
 	spinlock_t lock;
 	unsigned reqs;
@@ -266,6 +265,9 @@ struct fuse_io_priv {
 	struct kiocb *iocb;
 	struct file *file;
 	struct completion *done;
+#ifndef __GENKSYMS__
+	struct kref refcnt;
+#endif
 };
 
 #define FUSE_IO_PRIV_SYNC(f) \

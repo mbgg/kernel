@@ -183,7 +183,6 @@ struct thermal_zone_device {
 	struct thermal_attr *trip_hyst_attrs;
 	void *devdata;
 	int trips;
-	unsigned long trips_disabled;	/* bitmap for disabled trips */
 	int passive_delay;
 	int polling_delay;
 	int temperature;
@@ -201,6 +200,7 @@ struct thermal_zone_device {
 	struct delayed_work poll_queue;
 #ifndef __GENKSYMS__
 	atomic_t need_update;
+	unsigned long trips_disabled;	/* bitmap for disabled trips */
 #endif
 };
 

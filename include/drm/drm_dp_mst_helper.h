@@ -68,6 +68,10 @@ struct drm_dp_vcpi {
 struct drm_dp_mst_port {
 	struct kref kref;
 
+	/* FIXME: placeholder for kABI compatibility */
+	bool guid_valid;
+	u8 guid[16];
+
 	u8 port_num;
 	bool input;
 	bool mcs;
@@ -128,8 +132,10 @@ struct drm_dp_mst_branch {
 	int last_seqno;
 	bool link_address_sent;
 
+#ifndef __GENKSYMS__
 	/* global unique identifier to identify branch devices */
 	u8 guid[16];
+#endif
 };
 
 
@@ -431,6 +437,9 @@ struct drm_dp_mst_topology_mgr {
 
 	bool mst_state;
 	struct drm_dp_mst_branch *mst_primary;
+	/* placeholder for kABI compatibility */
+	bool guid_valid;
+	u8 guid[16];
 
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 sink_count;

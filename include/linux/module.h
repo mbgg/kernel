@@ -306,9 +306,23 @@ struct module {
 #endif
 
 #ifdef CONFIG_KALLSYMS
+#ifndef __GENKSYMS__
+	union {
+		struct {
+#endif
+	/* old placeholder for kABI compatibility */
+	Elf_Sym *symtab, *core_symtab;
+	unsigned int num_symtab, core_num_syms;
+	char *strtab, *core_strtab;
+#ifndef __GENKSYMS__
+		};
+		struct {
 	/* Protected by RCU and/or module_mutex: use rcu_dereference() */
 	struct mod_kallsyms *kallsyms;
 	struct mod_kallsyms core_kallsyms;
+		};
+	};
+#endif
 
 	/* Section attributes */
 	struct module_sect_attrs *sect_attrs;
