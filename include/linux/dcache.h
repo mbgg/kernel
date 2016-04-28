@@ -161,7 +161,9 @@ struct dentry_operations {
 	struct vfsmount *(*d_automount)(struct path *);
 	int (*d_manage)(struct dentry *, bool);
 	struct inode *(*d_select_inode)(struct dentry *, unsigned);
+#ifndef __GENKSYMS__
 	struct dentry *(*d_real)(struct dentry *, struct inode *);
+#endif
 } ____cacheline_aligned;
 
 /*
