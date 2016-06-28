@@ -71,7 +71,7 @@ static struct ldt_struct *alloc_ldt_struct(int size)
 /* After calling this, the LDT is immutable. */
 static void finalize_ldt_struct(struct ldt_struct *ldt)
 {
-	make_pages_readonly(ldt->entries, PFN_DOWN(ldt->size * LDT_ENTRY_SIZE),
+	make_pages_readonly(ldt->entries, PFN_UP(ldt->size * LDT_ENTRY_SIZE),
 			    XENFEAT_writable_descriptor_tables);
 }
 
@@ -95,7 +95,7 @@ static void free_ldt_struct(struct ldt_struct *ldt)
 	if (likely(!ldt))
 		return;
 
-	make_pages_writable(ldt->entries, PFN_DOWN(ldt->size * LDT_ENTRY_SIZE),
+	make_pages_writable(ldt->entries, PFN_UP(ldt->size * LDT_ENTRY_SIZE),
 			    XENFEAT_writable_descriptor_tables);
 	if (ldt->size * LDT_ENTRY_SIZE > PAGE_SIZE)
 		vfree(ldt->entries);
@@ -120,6 +120,9 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	if (!old_mm)
 		return 0;
 	mm->context.vdso = old_mm->context.vdso;
+#ifdef CONFIG_X86_64
+	mm->context.ia32_compat = old_mm->context.ia32_compat;
+#endif
 
 	mutex_lock(&old_mm->context.lock);
 	old_ldt = old_mm->context.ldt;
