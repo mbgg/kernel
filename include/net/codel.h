@@ -166,8 +166,10 @@ struct codel_vars {
 struct codel_stats {
 	u32		maxpacket;
 	u32		drop_count;
-	u32		drop_len;
 	u32		ecn_mark;
+#ifndef __GENKSYMS__
+	u32		drop_len;
+#endif
 };
 
 static void codel_params_init(struct codel_params *params,

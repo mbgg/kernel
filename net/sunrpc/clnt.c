@@ -442,7 +442,7 @@ out_no_rpciod:
 	return ERR_PTR(err);
 }
 
-static struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
+struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
 					struct rpc_xprt *xprt)
 {
 	struct rpc_clnt *clnt = NULL;
@@ -474,6 +474,7 @@ static struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
 
 	return clnt;
 }
+EXPORT_SYMBOL_GPL(rpc_create_xprt);
 
 /**
  * rpc_create - create an RPC client and transport with one call

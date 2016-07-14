@@ -265,7 +265,9 @@ struct header_ops {
 	void	(*cache_update)(struct hh_cache *hh,
 				const struct net_device *dev,
 				const unsigned char *haddr);
+#ifndef __GENKSYMS__
 	bool	(*validate)(const char *ll_header, unsigned int len);
+#endif
 };
 
 /* These flag bits are private to the generic network queueing

@@ -180,11 +180,16 @@ struct ehci_regs {
  * PORTSCx
  */
 	/* HOSTPC: offset 0x84 */
+#ifdef __GENKSYMS__
+	u32		hostpc[1];
+	u32		reserved5[16];
+#else /* __GENKSYMS__ */
 	u32		hostpc[0];	/* HOSTPC extension */
 #define HOSTPC_PHCD	(1<<22)		/* Phy clock disable */
 #define HOSTPC_PSPD	(3<<25)		/* Port speed detection */
 
 	u32		reserved5[17];
+#endif /* __GENKSYMS__ */
 
 	/* USBMODE_EX: offset 0xc8 */
 	u32		usbmode_ex;	/* USB Device mode extension */

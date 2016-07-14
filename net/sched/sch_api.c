@@ -782,6 +782,13 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, unsigned int n,
 }
 EXPORT_SYMBOL(qdisc_tree_reduce_backlog);
 
+/* Just for kABI compatibility */
+void qdisc_tree_decrease_qlen(struct Qdisc *sch, unsigned int n)
+{
+	qdisc_tree_reduce_backlog(sch, n, sch->qstats.backlog);
+}
+EXPORT_SYMBOL(qdisc_tree_decrease_qlen);
+
 static void notify_and_destroy(struct net *net, struct sk_buff *skb,
 			       struct nlmsghdr *n, u32 clid,
 			       struct Qdisc *old, struct Qdisc *new)
