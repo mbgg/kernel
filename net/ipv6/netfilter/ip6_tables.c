@@ -455,9 +455,8 @@ static bool find_jump_target(const struct xt_table_info *t,
 			     const struct ip6t_entry *target)
 {
 	struct ip6t_entry *iter;
-	void *loc_cpu_entry = t->entries[raw_smp_processor_id()];
 
-	xt_entry_foreach(iter, loc_cpu_entry, t->size) {
+	xt_entry_foreach(iter, t->entries, t->size) {
 		 if (iter == target)
 			return true;
 	}
@@ -1324,56 +1323,17 @@ do_add_counters(struct net *net, const void __user *user, unsigned int len,
 	unsigned int i, curcpu;
 	struct xt_counters_info tmp;
 	struct xt_counters *paddc;
-	unsigned int num_counters;
-	char *name;
-	int size;
-	void *ptmp;
 	struct xt_table *t;
 	const struct xt_table_info *private;
 	int ret = 0;
 	const void *loc_cpu_entry;
 	struct ip6t_entry *iter;
 	unsigned int addend;
-#ifdef CONFIG_COMPAT
-	struct compat_xt_counters_info compat_tmp;
 
-	if (compat) {
-		ptmp = &compat_tmp;
-		size = sizeof(struct compat_xt_counters_info);
-	} else
-#endif
-	{
-		ptmp = &tmp;
-		size = sizeof(struct xt_counters_info);
-	}
-
-	if (copy_from_user(ptmp, user, size) != 0)
-		return -EFAULT;
-
-#ifdef CONFIG_COMPAT
-	if (compat) {
-		num_counters = compat_tmp.num_counters;
-		name = compat_tmp.name;
-	} else
-#endif
-	{
-		num_counters = tmp.num_counters;
-		name = tmp.name;
-	}
-
-	if (len != size + num_counters * sizeof(struct xt_counters))
-		return -EINVAL;
-
-	paddc = vmalloc(len - size);
-	if (!paddc)
-		return -ENOMEM;
-
-	if (copy_from_user(paddc, user + size, len - size) != 0) {
-		ret = -EFAULT;
-		goto free;
-	}
-
-	t = xt_find_table_lock(net, AF_INET6, name);
+	paddc = xt_copy_counters_from_user(user, len, &tmp, compat);
+	if (IS_ERR(paddc))
+		return PTR_ERR(paddc);
+	t = xt_find_table_lock(net, AF_INET6, tmp.name);
 	if (IS_ERR_OR_NULL(t)) {
 		ret = t ? PTR_ERR(t) : -ENOENT;
 		goto free;
@@ -1382,7 +1342,7 @@ do_add_counters(struct net *net, const void __user *user, unsigned int len,
 
 	local_bh_disable();
 	private = t->private;
-	if (private->number != num_counters) {
+	if (private->number != tmp.num_counters) {
 		ret = -EINVAL;
 		goto unlock_up_free;
 	}
@@ -1533,8 +1493,8 @@ check_compat_entry_size_and_hooks(struct compat_ip6t_entry *e,
 	entry_offset = (void *)e - (void *)base;
 	j = 0;
 	xt_ematch_foreach(ematch, e) {
-		ret = compat_find_calc_match(ematch,
-					     &e->ipv6, e->comefrom, &off);
+		ret = compat_find_calc_match(ematch, &e->ipv6, e->comefrom,
+					     &off);
 		if (ret != 0)
 			goto release_matches;
 		++j;
@@ -1679,11 +1639,6 @@ translate_compat_table(struct net *net,
 	ret = translate_table(net, newinfo, entry1, &repl);
 	if (ret)
 		goto free_newinfo;
-
-	/* And one copy for every other CPU */
-	for_each_possible_cpu(i)
-		if (newinfo->entries[i] && newinfo->entries[i] != entry1)
-			memcpy(newinfo->entries[i], entry1, newinfo->size);
 
 	*pinfo = newinfo;
 	*pentry0 = entry1;
