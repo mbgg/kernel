@@ -366,8 +366,9 @@ static bool find_jump_target(const struct xt_table_info *t,
 			     const struct arpt_entry *target)
 {
 	struct arpt_entry *iter;
+	void *loc_cpu_entry = t->entries[raw_smp_processor_id()];
 
-	xt_entry_foreach(iter, t->entries, t->size) {
+	xt_entry_foreach(iter, loc_cpu_entry, t->size) {
 		 if (iter == target)
 			return true;
 	}
@@ -1357,6 +1358,11 @@ static int translate_compat_table(struct xt_table_info **pinfo,
 	ret = translate_table(newinfo, entry1, &repl);
 	if (ret)
 		goto free_newinfo;
+
+	/* And one copy for every other CPU */
+	for_each_possible_cpu(i)
+		if (newinfo->entries[i] && newinfo->entries[i] != entry1)
+			memcpy(newinfo->entries[i], entry1, newinfo->size);
 
 	*pinfo = newinfo;
 	*pentry0 = entry1;
