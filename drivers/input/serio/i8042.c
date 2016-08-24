@@ -1346,6 +1346,21 @@ static void i8042_unregister_ports(void)
 	}
 }
 
+/*
+ * Checks whether port belongs to i8042 controller.
+ */
+bool i8042_check_port_owner(const struct serio *port)
+{
+	int i;
+
+	for (i = 0; i < I8042_NUM_PORTS; i++)
+		if (i8042_ports[i].serio == port)
+			return true;
+
+	return false;
+}
+EXPORT_SYMBOL(i8042_check_port_owner);
+
 static void i8042_free_irqs(void)
 {
 	if (i8042_aux_irq_registered)
