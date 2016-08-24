@@ -61,7 +61,9 @@ struct serio {
 	 * For use by PS/2 layer when several ports share hardware and
 	 * may get indigestion when exposed to concurrent access (i8042).
 	 */
+#ifndef __GENKSYMS__
 	struct mutex *ps2_cmd_mutex;
+#endif
 };
 #define to_serio_port(d)	container_of(d, struct serio, dev)
 
