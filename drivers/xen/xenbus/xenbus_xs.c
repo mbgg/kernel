@@ -271,7 +271,7 @@ void *xenbus_dev_request_and_reply(struct xsd_sockmsg *msg)
 	if (IS_ERR(ret))
 		return ret;
 
-	if ((type == XS_TRANSACTION_END) ||
+	if ((msg->type == XS_TRANSACTION_END) ||
 	    ((type == XS_TRANSACTION_START) && (msg->type == XS_ERROR)))
 		transaction_end();
 
