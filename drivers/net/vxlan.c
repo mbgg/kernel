@@ -621,7 +621,6 @@ static struct sk_buff **vxlan_gro_receive(struct sk_buff **head,
 			goto out;
 	}
 
-	flush = 0;
 
 	for (p = *head; p; p = p->next) {
 		if (!NAPI_GRO_CB(p)->same_flow)
@@ -636,6 +635,7 @@ static struct sk_buff **vxlan_gro_receive(struct sk_buff **head,
 	}
 
 	pp = eth_gro_receive(head, skb);
+	flush = 0;
 
 out:
 	skb_gro_remcsum_cleanup(skb, &grc);
