@@ -797,3 +797,12 @@ int import_single_range(int rw, void __user *buf, size_t len,
 	iov_iter_init(i, rw, iov, 1, len);
 	return 0;
 }
+
+/* XXX only for kABI compatibility */
+#undef iov_iter_fault_in_multipages_readable
+int iov_iter_fault_in_multipages_readable(struct iov_iter *i, size_t bytes)
+{
+	return iov_iter_fault_in_readable(i, bytes);
+}
+EXPORT_SYMBOL(iov_iter_fault_in_multipages_readable);
+
