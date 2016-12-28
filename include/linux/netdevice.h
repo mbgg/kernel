@@ -1993,27 +1993,12 @@ static inline struct sk_buff **call_gro_receive(gro_receive_t cb,
 						struct sk_buff **head,
 						struct sk_buff *skb)
 {
-	if (unlikely(gro_recursion_inc_test(skb))) {
+	if (gro_recursion_inc_test(skb)) {
 		NAPI_GRO_CB(skb)->flush |= 1;
 		return NULL;
 	}
 
 	return cb(head, skb);
-}
-
-typedef struct sk_buff **(*gro_receive_sk_t)(struct sock *, struct sk_buff **,
-					     struct sk_buff *);
-static inline struct sk_buff **call_gro_receive_sk(gro_receive_sk_t cb,
-						   struct sock *sk,
-						   struct sk_buff **head,
-						   struct sk_buff *skb)
-{
-	if (unlikely(gro_recursion_inc_test(skb))) {
-		NAPI_GRO_CB(skb)->flush |= 1;
-		return NULL;
-	}
-
-	return cb(sk, head, skb);
 }
 
 struct packet_type {

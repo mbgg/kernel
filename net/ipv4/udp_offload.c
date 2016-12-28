@@ -340,8 +340,7 @@ unflush:
 	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
 	NAPI_GRO_CB(skb)->proto = uo_priv->offload->ipproto;
 
-	if (unlikely(gro_recursion_inc_test(skb))) {
-		flush = 1;
+	if (gro_recursion_inc_test(skb)) {
 		pp = NULL;
 	} else {
 		pp = uo_priv->offload->callbacks.gro_receive(head, skb,
