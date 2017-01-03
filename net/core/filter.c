@@ -46,6 +46,12 @@
 #include <linux/if_vlan.h>
 #include <linux/bpf.h>
 
+int sk_filter(struct sock *sk, struct sk_buff *skb)
+{
+	return sk_filter_trim_cap(sk, skb, 1);
+}
+EXPORT_SYMBOL(sk_filter);
+
 /**
  *	sk_filter_trim_cap - run a packet through a socket filter
  *	@sk: sock associated with &sk_buff
