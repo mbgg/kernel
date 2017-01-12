@@ -35,14 +35,14 @@ static int gen_pci_parse_request_of_pci_ranges(struct gen_pci *pci)
 	struct device *dev = pci->host.dev.parent;
 	struct device_node *np = dev->of_node;
 	resource_size_t iobase;
-	struct resource_entry *win;
+	struct resource_entry *win, *tmp;
 
 	err = of_pci_get_host_bridge_resources(np, 0, 0xff, &pci->resources,
 					       &iobase);
 	if (err)
 		return err;
 
-	resource_list_for_each_entry(win, &pci->resources) {
+	resource_list_for_each_entry_safe(win, tmp, &pci->resources) {
 		struct resource *parent, *res = win->res;
 
 		switch (resource_type(res)) {
@@ -52,6 +52,7 @@ static int gen_pci_parse_request_of_pci_ranges(struct gen_pci *pci)
 			if (err) {
 				dev_warn(dev, "error %d: failed to map resource %pR\n",
 					 err, res);
+				resource_list_destroy_entry(win);
 				continue;
 			}
 			break;
